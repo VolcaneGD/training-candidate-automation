@@ -49,7 +49,7 @@ The monitor refreshes every second. `RUNNING` pulses, `RETRYING` is yellow, `STO
 
 ## Safe recovery
 
-Set `retry_attempts` and `retry_delay_seconds` globally or per stage to resume transient command failures automatically. A monitor can also invoke an explicitly configured Windows Scheduled Task with `--recovery-task`; use that only for a task you own which restarts the same bounded configuration.
+Set `retry_attempts` and `retry_delay_seconds` globally or per stage to resume transient command failures automatically. A monitor can also invoke an explicitly configured Windows Scheduled Task with `--recovery-task`; use that only for a task you own which restarts the same bounded configuration. While a terminal state remains unchanged, the monitor reissues that recovery request every 30 seconds and keeps `RETRYING` visible with its attempt count in the LIVE LOG; it does not silently settle on `STOPPED` while automatic recovery is configured.
 
 The runner never retries past `max_candidates` implicitly, activates a candidate, or deletes old models. For fully automated but still bounded continuation, configure `cap_recovery` with a positive `max_handoffs` and a command array. On a cap miss, TCA writes `cap_recovery_scores.json`, invokes that command with `{scores_path}`, `{run_dir}`, `{candidate}`, and `{release_name}`, and records `cap_recovery_started`. The recovery command owns domain-specific error classification and must launch the next bounded configuration; once `max_handoffs` is exhausted, TCA stays at `candidate_cap_reached`.
 

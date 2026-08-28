@@ -19,6 +19,7 @@ RUNTIME_SETTING_NAMES = (
     "title", "watch_path", "log_path", "process_id", "modal_app",
     "state_path", "refresh_seconds", "notify", "recovery_task",
 )
+RECOVERY_CONFIRMATION_SECONDS = 30
 
 
 def dashboard_theme() -> dict[str, str]:
@@ -78,22 +79,48 @@ def recovery_request_key(automation_state: object) -> str | None:
     return f"{phase}:{candidate}" if candidate is not None else phase
 
 
-def request_orchestrator_recovery(task_name: str | None) -> None:
+def recovery_status_badge(
+    phase: object,
+    overall_state: object,
+    *,
+    recovery_task: str | None,
+    request_started_at: float | None,
+    request_accepted: bool,
+    now: float | None = None,
+) -> tuple[str, str, bool]:
+    """Show RETRYING only while a configured recovery launch awaits confirmation."""
+    fallback = dashboard_status_badge(phase, overall_state)
+    if recovery_request_key({"phase": phase}) is None or not recovery_task:
+        return fallback
+    if request_started_at is None:
+        return fallback
+    return "RETRYING", "#fbbf24", False
+
+
+def recovery_request_due(last_request_at: float | None, *, now: float | None = None) -> bool:
+    """Return whether automatic recovery must be requested again."""
+    if last_request_at is None:
+        return True
+    current_time = time.monotonic() if now is None else now
+    return current_time - last_request_at >= RECOVERY_CONFIRMATION_SECONDS
+
+
+def request_orchestrator_recovery(task_name: str | None) -> bool:
     """Ask Task Scheduler to run the recovery handler without showing a console."""
     if not task_name:
-        return
+        return False
     try:
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        subprocess.run(
+        result = subprocess.run(
             ["schtasks", "/Run", "/TN", task_name],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
             creationflags=creationflags,
         )
+        return result.returncode == 0
     except OSError:
-        # A later one-second refresh will retry if Task Scheduler is temporarily unavailable.
-        return
+        return False
 
 
 def should_close_after_terminal_state(automation_state: object) -> bool:
@@ -399,7 +426,7 @@ class TrainingMonitorApp:
         self.badge_lit = False
         self.badge_color = self.theme["unknown"]
         self.notified: set[str] = set()
-        self.recovery_requests: set[str] = set()
+        self.recovery_requests: dict[str, tuple[float, bool, int]] = {}
         self.close_scheduled = False
         self.state_value = tk.StringVar(value="CONNECTING")
         self.phase_value = tk.StringVar(value="Loading monitor")
@@ -451,6 +478,7 @@ class TrainingMonitorApp:
         )
         self.log.tag_configure("terminal-complete", foreground="#86efac")
         self.log.tag_configure("terminal-stopped", foreground="#fb7185")
+        self.log.tag_configure("terminal-retrying", foreground="#fbbf24")
         self.log.pack(fill="both", expand=True, padx=16)
         actions = tk.Frame(self.tk, background=self.theme["background"])
         actions.pack(fill="x", padx=16, pady=(8, 12))
@@ -492,15 +520,29 @@ class TrainingMonitorApp:
         )
         state = str(snapshot["overall_state"])
         recovery_key = recovery_request_key(snapshot["automation_state"])
-        if recovery_key and recovery_key not in self.recovery_requests:
-            request_orchestrator_recovery(self.args.recovery_task)
-            self.recovery_requests.add(recovery_key)
+        now = time.monotonic()
+        previous_recovery = self.recovery_requests.get(recovery_key) if recovery_key else None
+        if recovery_key and recovery_request_due(
+            None if previous_recovery is None else previous_recovery[0], now=now,
+        ):
+            previous_attempts = 0 if previous_recovery is None else previous_recovery[2]
+            self.recovery_requests[recovery_key] = (
+                now,
+                request_orchestrator_recovery(self.args.recovery_task),
+                previous_attempts + 1,
+            )
         elapsed_value = snapshot["stage_elapsed_seconds"]
         elapsed = elapsed_value if isinstance(elapsed_value, int) and elapsed_value >= 0 else 0
-        stage_running = snapshot["automation_phase"] in {"stage_running", "repair_running"} or recovery_key is not None
-        badge_text, badge_color, badge_pulsing = dashboard_status_badge(snapshot["automation_phase"], state)
-        if recovery_key:
-            badge_text, badge_color, badge_pulsing = "RETRYING", "#fbbf24", False
+        stage_running = snapshot["automation_phase"] in {"stage_running", "repair_running"}
+        request_started_at, request_accepted, recovery_attempts = (
+            self.recovery_requests.get(recovery_key, (None, False, 0)) if recovery_key else (None, False, 0)
+        )
+        badge_text, badge_color, badge_pulsing = recovery_status_badge(
+            snapshot["automation_phase"], state,
+            recovery_task=self.args.recovery_task,
+            request_started_at=request_started_at,
+            request_accepted=request_accepted,
+        )
         self.state_value.set(badge_text)
         self.badge_color = badge_color
         self.badge_pulsing = badge_pulsing
@@ -520,10 +562,20 @@ class TrainingMonitorApp:
         self.log.delete("1.0", "end")
         terminal_summary = completion_log_summary(snapshot["automation_state"])
         log_text = str(snapshot["log_tail"]) or "No log output yet."
+        recovery_summary = ""
+        if recovery_key and self.args.recovery_task:
+            request_result = "accepted" if request_accepted else "not accepted; retry scheduled"
+            recovery_summary = (
+                f"AUTO-RECOVERY — attempt {recovery_attempts}\n"
+                f"task: {self.args.recovery_task}\n"
+                f"request: {request_result}; retry interval: {RECOVERY_CONFIRMATION_SECONDS}s"
+            )
         if terminal_summary:
             summary_color = completion_summary_color(snapshot["automation_state"])
             summary_tag = "terminal-complete" if summary_color == "#86efac" else "terminal-stopped"
             self.log.insert("1.0", terminal_summary, summary_tag)
+            if recovery_summary:
+                self.log.insert("end", f"\n\n{recovery_summary}", "terminal-retrying")
             self.log.insert("end", f"\n\n{log_text}")
         else:
             self.log.insert("1.0", log_text)

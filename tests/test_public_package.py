@@ -55,6 +55,22 @@ class PublicPackageTests(unittest.TestCase):
             "#fb7185",
         )
 
+    def test_unconfirmed_recovery_remains_retrying_for_automatic_restart(self) -> None:
+        self.assertEqual(
+            training_monitor.recovery_status_badge(
+                "failed", "failed", recovery_task="Example", request_started_at=0.0,
+                request_accepted=True, now=training_monitor.RECOVERY_CONFIRMATION_SECONDS + 1,
+            ),
+            ("RETRYING", "#fbbf24", False),
+        )
+
+    def test_recovery_request_is_reissued_after_the_retry_interval(self) -> None:
+        self.assertTrue(
+            training_monitor.recovery_request_due(
+                0.0, now=training_monitor.RECOVERY_CONFIRMATION_SECONDS,
+            )
+        )
+
     def test_cap_recovery_handoff_receives_score_summary_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
