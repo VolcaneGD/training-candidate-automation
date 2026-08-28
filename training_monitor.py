@@ -73,6 +73,11 @@ def recovery_request_key(automation_state: object) -> str | None:
     if not isinstance(automation_state, dict):
         return None
     phase = str(automation_state.get("phase") or "")
+    reason = str(automation_state.get("reason") or "")
+    if phase == "candidate_cap_reached" or reason in {
+        "candidate_cap_reached", "cap_recovery_failed",
+    }:
+        return None
     if phase not in {"failed", "candidate_cap_reached"}:
         return None
     candidate = automation_state.get("candidate")
@@ -153,7 +158,13 @@ def completion_log_summary(state: dict[str, object]) -> str:
     if phase in {"failed", "candidate_cap_reached"}:
         reason = str(state.get("reason") or phase)
         stage = str(state.get("stage") or "-")
-        return f"STOPPED — Candidate {candidate}\nreason: {reason}\nstage: {stage}"
+        summary = f"STOPPED — Candidate {candidate}\nreason: {reason}\nstage: {stage}"
+        if reason in {"candidate_cap_reached", "cap_recovery_failed"}:
+            summary += (
+                "\n\nACTION REQUIRED — Candidate safety cap reached. "
+                "Inspect the score report, improve the curriculum, then start a new bounded run."
+            )
+        return summary
     return ""
 
 

@@ -71,6 +71,17 @@ class PublicPackageTests(unittest.TestCase):
             )
         )
 
+    def test_candidate_cap_is_stopped_instead_of_retrying(self) -> None:
+        self.assertIsNone(training_monitor.recovery_request_key({
+            "phase": "failed", "reason": "cap_recovery_failed", "candidate": 3,
+        }))
+        self.assertIn(
+            "ACTION REQUIRED",
+            training_monitor.completion_log_summary({
+                "phase": "failed", "reason": "cap_recovery_failed", "candidate": 3,
+            }),
+        )
+
     def test_cap_recovery_handoff_receives_score_summary_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
