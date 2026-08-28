@@ -296,7 +296,7 @@ def run_loop(
         _write_json(state_path, {"phase": "score_below_target", "candidate": candidate, "release_name": release_name, "scores": scores})
         removed_artifacts = cleanup_rejected_artifacts(config)
         if removed_artifacts:
-            _append_event(event_path, {
+            _append_event(events_path, {
                 "event": "rejected_artifacts_deleted",
                 "candidate": candidate,
                 "paths": [str(path) for path in removed_artifacts],
