@@ -16,6 +16,10 @@ import training_monitor
 
 
 class PublicPackageTests(unittest.TestCase):
+    def test_dashboard_locale_provides_japanese_action_guidance(self) -> None:
+        self.assertEqual(training_monitor.dashboard_text("ja", "live_log"), "ライブログ")
+        self.assertIn("Codex", training_monitor.safety_cap_guidance("ja"))
+
     def test_score_gated_run_completes_with_a_generic_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

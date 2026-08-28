@@ -21,6 +21,19 @@ RUNTIME_SETTING_NAMES = (
 )
 RECOVERY_CONFIRMATION_SECONDS = 30
 
+TEXT = {
+    "en": {"live_log": "LIVE LOG", "language": "日本語", "action": "ACTION REQUIRED — Candidate safety cap reached. Report this screen to Codex to inspect the score, improve the curriculum, set a new positive cap, and resume a bounded run."},
+    "ja": {"live_log": "ライブログ", "language": "English", "action": "要対応 — 学習候補の安全上限に到達しました。この画面を Codex に報告し、スコア確認、カリキュラム改善、新しい正の上限設定、有界実行の再開を依頼してください。"},
+}
+
+
+def dashboard_text(language: str, key: str) -> str:
+    return TEXT.get(language, TEXT["en"]).get(key, TEXT["en"].get(key, key))
+
+
+def safety_cap_guidance(language: str) -> str:
+    return dashboard_text(language, "action")
+
 
 def dashboard_theme() -> dict[str, str]:
     return {
@@ -133,7 +146,7 @@ def should_close_after_terminal_state(automation_state: object) -> bool:
     return isinstance(automation_state, dict) and automation_state.get("phase") == "perfect_score"
 
 
-def completion_log_summary(state: dict[str, object]) -> str:
+def completion_log_summary(state: dict[str, object], language: str = "en") -> str:
     """Render terminal automation state at the top of the LIVE LOG."""
     phase = str(state.get("phase") or "")
     candidate = state.get("candidate", "-")
@@ -160,10 +173,7 @@ def completion_log_summary(state: dict[str, object]) -> str:
         stage = str(state.get("stage") or "-")
         summary = f"STOPPED — Candidate {candidate}\nreason: {reason}\nstage: {stage}"
         if reason in {"candidate_cap_reached", "cap_recovery_failed"}:
-            summary += (
-                "\n\nACTION REQUIRED — Candidate safety cap reached. "
-                "Inspect the score report, improve the curriculum, then start a new bounded run."
-            )
+            summary += "\n\n" + safety_cap_guidance(language)
         return summary
     return ""
 
@@ -423,6 +433,7 @@ class TrainingMonitorApp:
         from tkinter import scrolledtext, ttk
 
         self.args = args
+        self.language = "en"
         self.settings_path = settings_path
         self.settings_mtime_ns = -1
         self.tk = tk.Tk()
@@ -480,8 +491,8 @@ class TrainingMonitorApp:
             tk.Label(card, text=label, background=self.theme["surface"], foreground=self.theme["muted"], font=("Segoe UI", 7)).pack(anchor="w", padx=8, pady=(7, 1))
             tk.Label(card, textvariable=value, background=self.theme["surface"], foreground=self.theme["text"], font=("Segoe UI Semibold", 9)).pack(anchor="w", padx=8, pady=(0, 7))
 
-        log_label = tk.Label(self.tk, text="LIVE LOG", anchor="w", background=self.theme["background"], foreground=self.theme["muted"], font=("Segoe UI", 8))
-        log_label.pack(fill="x", padx=16, pady=(12, 4))
+        self.log_label = tk.Label(self.tk, text=dashboard_text(self.language, "live_log"), anchor="w", background=self.theme["background"], foreground=self.theme["muted"], font=("Segoe UI", 8))
+        self.log_label.pack(fill="x", padx=16, pady=(12, 4))
         self.log = scrolledtext.ScrolledText(
             self.tk, height=9, wrap="word", state="disabled", borderwidth=0,
             background=self.theme["surface"], foreground=self.theme["text"], insertbackground=self.theme["text"],
@@ -496,6 +507,14 @@ class TrainingMonitorApp:
         style = ttk.Style(self.tk)
         style.configure("Monitor.TButton", font=("Segoe UI Semibold", 9), padding=(10, 3))
         ttk.Button(actions, text="Refresh now", style="Monitor.TButton", command=self.refresh).pack(side="right")
+        self.language_button = ttk.Button(actions, text=dashboard_text(self.language, "language"), style="Monitor.TButton", command=self._toggle_language)
+        self.language_button.pack(side="left")
+
+    def _toggle_language(self) -> None:
+        self.language = "ja" if self.language == "en" else "en"
+        self.log_label.configure(text=dashboard_text(self.language, "live_log"))
+        self.language_button.configure(text=dashboard_text(self.language, "language"))
+        self.refresh()
 
     def _animate_badge(self) -> None:
         if self.badge_pulsing:
@@ -571,7 +590,7 @@ class TrainingMonitorApp:
         self.metrics["artifacts"].set(f"{snapshot['artifact_files']} / {format_bytes(int(snapshot['artifact_bytes']))}")
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
-        terminal_summary = completion_log_summary(snapshot["automation_state"])
+        terminal_summary = completion_log_summary(snapshot["automation_state"], self.language)
         log_text = str(snapshot["log_tail"]) or "No log output yet."
         recovery_summary = ""
         if recovery_key and self.args.recovery_task:
