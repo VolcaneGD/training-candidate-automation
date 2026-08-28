@@ -99,6 +99,21 @@ def _validate_config(config: dict[str, object]) -> tuple[int, int, str, str, Pat
     return maximum, first_candidate, initial_resume_adapter, template, Path(workdir), stages, reports
 
 
+def _cap_recovery(config: dict[str, object]) -> tuple[int, list[object]] | None:
+    raw = config.get("cap_recovery")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("cap_recovery must be an object")
+    maximum = raw.get("max_handoffs")
+    command = raw.get("command")
+    if not isinstance(maximum, int) or maximum < 1:
+        raise ValueError("cap_recovery.max_handoffs must be a positive integer")
+    if not isinstance(command, list) or not command:
+        raise ValueError("cap_recovery.command must be a non-empty command array")
+    return maximum, command
+
+
 def run_loop(
     config: dict[str, object],
     *,
@@ -119,6 +134,7 @@ def run_loop(
     prepare_directories = config.get("prepare_directories", [])
     if not isinstance(prepare_directories, list) or not all(isinstance(item, str) for item in prepare_directories):
         raise ValueError("prepare_directories must be a list of paths")
+    cap_recovery = _cap_recovery(config)
 
     previous_release_name = initial_resume_adapter
     for candidate in range(first_candidate, first_candidate + maximum):
@@ -239,6 +255,63 @@ def run_loop(
 
         _write_json(state_path, {"phase": "score_below_target", "candidate": candidate, "release_name": release_name, "scores": scores})
         if candidate == first_candidate + maximum - 1:
+            if cap_recovery is not None:
+                max_handoffs, recovery_template = cap_recovery
+                recovery_state_path = output_dir / "cap_recovery_state.json"
+                try:
+                    recovery_state = json.loads(recovery_state_path.read_text(encoding="utf-8"))
+                except FileNotFoundError:
+                    recovery_state = {}
+                except (OSError, json.JSONDecodeError) as error:
+                    raise ValueError(f"invalid cap recovery state {recovery_state_path}: {error}") from error
+                handoffs = recovery_state.get("handoffs", 0)
+                if not isinstance(handoffs, int) or handoffs < 0:
+                    raise ValueError("cap recovery state handoffs must be a non-negative integer")
+                if handoffs < max_handoffs:
+                    scores_path = output_dir / "cap_recovery_scores.json"
+                    _write_json(scores_path, {
+                        "candidate": candidate,
+                        "release_name": release_name,
+                        "scores": scores,
+                    })
+                    recovery_context = {
+                        **context,
+                        "run_dir": str(output_dir),
+                        "scores_path": str(scores_path),
+                    }
+                    command = [_render(str(part), recovery_context) for part in recovery_template]
+                    recovery_log = output_dir / f"candidate-{candidate:03d}-cap-recovery-{handoffs + 1}.log"
+                    _write_json(state_path, {
+                        "phase": "cap_recovery_running",
+                        "candidate": candidate,
+                        "release_name": release_name,
+                        "handoff": handoffs + 1,
+                        "log_path": str(recovery_log),
+                    })
+                    returncode = command_runner(command, workdir, recovery_log)
+                    if returncode == 0:
+                        _write_json(recovery_state_path, {"handoffs": handoffs + 1})
+                        result = {
+                            "perfect": False,
+                            "reason": "cap_recovery_started",
+                            "candidate": candidate,
+                            "release_name": release_name,
+                            "scores": scores,
+                            "handoff": handoffs + 1,
+                            "log_path": str(recovery_log),
+                        }
+                        _write_json(state_path, {"phase": "cap_recovery_started", **result})
+                        return result
+                    result = {
+                        "perfect": False,
+                        "reason": "cap_recovery_failed",
+                        "candidate": candidate,
+                        "release_name": release_name,
+                        "returncode": returncode,
+                        "log_path": str(recovery_log),
+                    }
+                    _write_json(state_path, {"phase": "failed", **result})
+                    return result
             result = {"perfect": False, "reason": "candidate_cap_reached", "candidate": candidate, "scores": scores}
             _write_json(state_path, {"phase": "candidate_cap_reached", **result})
             return result
