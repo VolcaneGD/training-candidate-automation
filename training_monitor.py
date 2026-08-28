@@ -130,6 +130,18 @@ def completion_log_summary(state: dict[str, object]) -> str:
     return ""
 
 
+def completion_summary_color(state: object) -> str | None:
+    """Return the Status Badge color for a terminal LIVE LOG summary."""
+    if not isinstance(state, dict):
+        return None
+    phase = str(state.get("phase") or "")
+    if phase == "perfect_score":
+        return "#86efac"
+    if phase in {"failed", "candidate_cap_reached"}:
+        return "#fb7185"
+    return None
+
+
 def dashboard_activity_label(elapsed_seconds: int, refresh_tick: int, *, is_running: bool = True) -> str:
     """Provide a visible heartbeat while a long stage is making no new log line."""
     if not is_running:
@@ -437,6 +449,8 @@ class TrainingMonitorApp:
             background=self.theme["surface"], foreground=self.theme["text"], insertbackground=self.theme["text"],
             selectbackground="#334155", font=("Cascadia Mono", 9), padx=10, pady=9,
         )
+        self.log.tag_configure("terminal-complete", foreground="#86efac")
+        self.log.tag_configure("terminal-stopped", foreground="#fb7185")
         self.log.pack(fill="both", expand=True, padx=16)
         actions = tk.Frame(self.tk, background=self.theme["background"])
         actions.pack(fill="x", padx=16, pady=(8, 12))
@@ -506,7 +520,13 @@ class TrainingMonitorApp:
         self.log.delete("1.0", "end")
         terminal_summary = completion_log_summary(snapshot["automation_state"])
         log_text = str(snapshot["log_tail"]) or "No log output yet."
-        self.log.insert("1.0", f"{terminal_summary}\n\n{log_text}" if terminal_summary else log_text)
+        if terminal_summary:
+            summary_color = completion_summary_color(snapshot["automation_state"])
+            summary_tag = "terminal-complete" if summary_color == "#86efac" else "terminal-stopped"
+            self.log.insert("1.0", terminal_summary, summary_tag)
+            self.log.insert("end", f"\n\n{log_text}")
+        else:
+            self.log.insert("1.0", log_text)
         self.log.configure(state="disabled")
         if self.args.notify and state in {"completed", "failed"} and state not in self.notified:
             send_notification(self.args.title, f"Job {state}.")

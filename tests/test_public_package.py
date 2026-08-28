@@ -49,6 +49,12 @@ class PublicPackageTests(unittest.TestCase):
     def test_monitor_uses_generic_single_instance_namespace(self) -> None:
         self.assertTrue(training_monitor.singleton_mutex_name("demo").startswith("Local\\TrainingCandidateMonitor-"))
 
+    def test_terminal_summary_uses_the_stopped_status_color(self) -> None:
+        self.assertEqual(
+            training_monitor.completion_summary_color({"phase": "failed"}),
+            "#fb7185",
+        )
+
     def test_cap_recovery_handoff_receives_score_summary_once(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
