@@ -65,10 +65,11 @@ class PublicPackageTests(unittest.TestCase):
                     encoding="utf-8",
                 )
 
-            removed = candidate_loop.cleanup_rejected_artifacts({
+            removed = candidate_loop.cleanup_rejected_artifacts({"artifact_cleanup": {
                 "enabled": True,
                 "retain_latest_candidates": 2,
                 "automation_root": str(root),
+            }
             })
 
             self.assertEqual([path.name for path in removed], ["demo-v1"])
