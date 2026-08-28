@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+run/
+artifacts/
+scores/
+markers/
+*.log
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+.env

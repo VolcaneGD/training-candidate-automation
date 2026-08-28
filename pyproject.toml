@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "training-candidate-automation"
+version = "0.1.0"
+description = "Bounded, score-gated training candidate automation with a Windows monitor."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "VolcaneGD"}]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+training-candidates = "candidate_loop:main"
+training-monitor = "training_monitor:main"
+
+[tool.setuptools]
+py-modules = ["candidate_loop", "training_monitor"]

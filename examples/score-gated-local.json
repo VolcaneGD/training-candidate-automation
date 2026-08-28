@@ -1,0 +1,27 @@
+{
+  "max_candidates": 2,
+  "first_candidate": 1,
+  "release_template": "example-model-v{candidate}",
+  "workdir": "C:\\path\\to\\your-project",
+  "stages": [
+    {
+      "name": "train",
+      "command": ["python", "train.py", "--output", "artifacts/{release_name}"]
+    },
+    {
+      "name": "evaluate",
+      "command": ["python", "evaluate.py", "--model", "artifacts/{release_name}", "--output", "scores/{release_name}.json"],
+      "allow_nonzero": true
+    }
+  ],
+  "score_reports": [
+    {
+      "path": "scores/{release_name}.json",
+      "passed_key": "passed",
+      "cases_key": "cases"
+    }
+  ],
+  "repair_commands": [
+    ["python", "refresh_training_data.py"]
+  ]
+}
