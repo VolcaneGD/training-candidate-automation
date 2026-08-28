@@ -21,6 +21,17 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIn("Codex", training_monitor.safety_cap_guidance("ja"))
         self.assertEqual(training_monitor.dashboard_font("ja"), "BIZ UDPGothic")
 
+    def test_retry_wait_elapsed_counts_from_retry_start(self) -> None:
+        self.assertEqual(training_monitor.stage_elapsed_seconds(
+            {"phase": "stage_retry_wait", "retry_started_at": 100.0}, now=107.0,
+        ), 7)
+
+    def test_exhausted_stage_retry_is_stopped_with_action_guidance(self) -> None:
+        state = {"phase": "failed", "reason": "stage_failed", "candidate": 9, "stage": "download"}
+        self.assertEqual(training_monitor.dashboard_status_badge("failed", "completed")[0], "STOPPED")
+        self.assertIsNone(training_monitor.recovery_request_key(state))
+        self.assertIn("ACTION REQUIRED", training_monitor.completion_log_summary(state))
+
     def test_score_gated_run_completes_with_a_generic_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

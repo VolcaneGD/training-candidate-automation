@@ -35,6 +35,15 @@ def safety_cap_guidance(language: str) -> str:
     return dashboard_text(language, "action")
 
 
+def stage_failure_guidance(language: str) -> str:
+    return (
+        "ACTION REQUIRED — Stage retries are exhausted. Report this screen to Codex so "
+        "the failed stage and its log can be inspected before resuming."
+        if language != "ja" else
+        "要対応 — 工程の再試行回数を使い切りました。この画面を Codex に報告し、失敗した工程とログを確認してから再開を依頼してください。"
+    )
+
+
 def dashboard_font(language: str) -> str:
     """Prefer the installed UD font whenever the dashboard is in Japanese."""
     return "BIZ UDPGothic" if language == "ja" else "Segoe UI"
@@ -93,7 +102,7 @@ def recovery_request_key(automation_state: object) -> str | None:
     phase = str(automation_state.get("phase") or "")
     reason = str(automation_state.get("reason") or "")
     if phase == "candidate_cap_reached" or reason in {
-        "candidate_cap_reached", "cap_recovery_failed",
+        "candidate_cap_reached", "cap_recovery_failed", "stage_failed",
     }:
         return None
     if phase not in {"failed", "candidate_cap_reached"}:
@@ -179,6 +188,8 @@ def completion_log_summary(state: dict[str, object], language: str = "en") -> st
         summary = f"STOPPED — Candidate {candidate}\nreason: {reason}\nstage: {stage}"
         if reason in {"candidate_cap_reached", "cap_recovery_failed"}:
             summary += "\n\n" + safety_cap_guidance(language)
+        elif reason == "stage_failed":
+            summary += "\n\n" + stage_failure_guidance(language)
         return summary
     return ""
 
@@ -205,8 +216,9 @@ def dashboard_activity_label(elapsed_seconds: int, refresh_tick: int, *, is_runn
 
 def stage_elapsed_seconds(state: dict[str, object], *, now: float | None = None) -> int:
     """Return the current stage duration, frozen whenever no stage is running."""
-    if state.get("phase") in {"stage_running", "repair_running"}:
-        started_at = state.get("stage_started_at")
+    phase = state.get("phase")
+    if phase in {"stage_running", "repair_running", "stage_retry_wait"}:
+        started_at = state.get("retry_started_at") if phase == "stage_retry_wait" else state.get("stage_started_at")
         if isinstance(started_at, (int, float)):
             return int(max(0, (time.time() if now is None else now) - started_at))
     elapsed = state.get("stage_elapsed_seconds", 0)
@@ -570,7 +582,7 @@ class TrainingMonitorApp:
             )
         elapsed_value = snapshot["stage_elapsed_seconds"]
         elapsed = elapsed_value if isinstance(elapsed_value, int) and elapsed_value >= 0 else 0
-        stage_running = snapshot["automation_phase"] in {"stage_running", "repair_running"}
+        stage_running = snapshot["automation_phase"] in {"stage_running", "repair_running", "stage_retry_wait"}
         request_started_at, request_accepted, recovery_attempts = (
             self.recovery_requests.get(recovery_key, (None, False, 0)) if recovery_key else (None, False, 0)
         )

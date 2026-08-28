@@ -240,7 +240,7 @@ def run_loop(
                 if returncode == 0 or allow_nonzero:
                     break
                 if attempt <= retry_attempts:
-                    _write_json(state_path, {"phase": "stage_retry_wait", "candidate": candidate, "release_name": release_name, "stage": name, "attempt": attempt, "returncode": returncode, "log_path": str(log_path), "retry_after_seconds": retry_delay_seconds})
+                    _write_json(state_path, {"phase": "stage_retry_wait", "candidate": candidate, "release_name": release_name, "stage": name, "attempt": attempt, "returncode": returncode, "log_path": str(log_path), "retry_after_seconds": retry_delay_seconds, "retry_started_at": time.time()})
                     time.sleep(retry_delay_seconds)
                     continue
                 result = {"perfect": False, "reason": "stage_failed", "candidate": candidate, "stage": name, "returncode": returncode, "log_path": str(log_path), "attempt": attempt}
