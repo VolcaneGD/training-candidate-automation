@@ -285,6 +285,8 @@ def run_loop(
                         "phase": "cap_recovery_running",
                         "candidate": candidate,
                         "release_name": release_name,
+                        "reason": "candidate_cap_reached",
+                        "scores": scores,
                         "handoff": handoffs + 1,
                         "log_path": str(recovery_log),
                     })

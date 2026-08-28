@@ -75,6 +75,7 @@ class PublicPackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             commands: list[list[str]] = []
+            recovery_states: list[dict[str, object]] = []
 
             def runner(command: list[str], _workdir: Path, _log_path: Path) -> int:
                 commands.append(command)
@@ -83,6 +84,8 @@ class PublicPackageTests(unittest.TestCase):
                     (root / "scores" / "demo-v1.json").write_text(
                         json.dumps({"passed": 1, "cases": 2}), encoding="utf-8"
                     )
+                if command[0] == "recover":
+                    recovery_states.append(json.loads((root / "run" / "monitor_state.json").read_text(encoding="utf-8")))
                 return 0
 
             result = candidate_loop.run_loop(
@@ -108,6 +111,8 @@ class PublicPackageTests(unittest.TestCase):
             self.assertEqual(json.loads(summary.read_text(encoding="utf-8"))["scores"][0]["passed"], 1)
             self.assertEqual(commands[-1][2], str(root / "run"))
             self.assertEqual(commands[-1][3], "1")
+            self.assertEqual(recovery_states[0]["reason"], "candidate_cap_reached")
+            self.assertEqual(recovery_states[0]["scores"][0]["passed"], 1)
 
     def test_monitor_launcher_forwards_an_explicit_recovery_task(self) -> None:
         launcher = ROOT / "scripts" / "launch_training_monitor.ps1"
