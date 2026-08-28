@@ -35,6 +35,11 @@ def safety_cap_guidance(language: str) -> str:
     return dashboard_text(language, "action")
 
 
+def dashboard_font(language: str) -> str:
+    """Prefer the installed UD font whenever the dashboard is in Japanese."""
+    return "BIZ UDPGothic" if language == "ja" else "Segoe UI"
+
+
 def dashboard_theme() -> dict[str, str]:
     return {
         "background": "#101318",
@@ -514,6 +519,8 @@ class TrainingMonitorApp:
         self.language = "ja" if self.language == "en" else "en"
         self.log_label.configure(text=dashboard_text(self.language, "live_log"))
         self.language_button.configure(text=dashboard_text(self.language, "language"))
+        self.log_label.configure(font=(dashboard_font(self.language), 9))
+        self.log.configure(font=("BIZ UDPGothic" if self.language == "ja" else "Cascadia Mono", 10 if self.language == "ja" else 9))
         self.refresh()
 
     def _animate_badge(self) -> None:
