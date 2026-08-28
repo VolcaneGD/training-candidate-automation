@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -112,6 +114,44 @@ def _cap_recovery(config: dict[str, object]) -> tuple[int, list[object]] | None:
     if not isinstance(command, list) or not command:
         raise ValueError("cap_recovery.command must be a non-empty command array")
     return maximum, command
+
+
+def cleanup_rejected_artifacts(config: dict[str, object]) -> list[Path]:
+    """Delete only old, terminal, rejected candidate artifact directories."""
+    raw = config.get("artifact_cleanup")
+    if not isinstance(raw, dict) or raw.get("enabled") is not True:
+        return []
+    retained = raw.get("retain_latest_candidates", 2)
+    root_value = raw.get("automation_root")
+    if not isinstance(retained, int) or retained < 1:
+        raise ValueError("artifact_cleanup.retain_latest_candidates must be a positive integer")
+    if not isinstance(root_value, str) or not root_value:
+        return []
+    root = Path(root_value)
+    candidates: list[tuple[int, Path, bool]] = []
+    for directory in root.glob("v*-*"):
+        match = re.match(r"v(\d+)-", directory.name)
+        state_path = directory / "run" / "monitor_state.json"
+        if not match or not state_path.is_file():
+            continue
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        perfect = state.get("perfect")
+        if isinstance(perfect, bool):
+            candidates.append((int(match.group(1)), directory, perfect))
+    candidates.sort(key=lambda item: item[0])
+    protected = {number for number, _directory, _perfect in candidates[-retained:]}
+    removed: list[Path] = []
+    for number, directory, perfect in candidates:
+        if number in protected or perfect:
+            continue
+        for artifact in (directory / "artifacts").iterdir() if (directory / "artifacts").is_dir() else ():
+            if artifact.is_dir():
+                shutil.rmtree(artifact)
+                removed.append(artifact)
+    return removed
 
 
 def run_loop(
@@ -254,6 +294,13 @@ def run_loop(
             return result
 
         _write_json(state_path, {"phase": "score_below_target", "candidate": candidate, "release_name": release_name, "scores": scores})
+        removed_artifacts = cleanup_rejected_artifacts(config)
+        if removed_artifacts:
+            _append_event(event_path, {
+                "event": "rejected_artifacts_deleted",
+                "candidate": candidate,
+                "paths": [str(path) for path in removed_artifacts],
+            })
         if candidate == first_candidate + maximum - 1:
             if cap_recovery is not None:
                 max_handoffs, recovery_template = cap_recovery

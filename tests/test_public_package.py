@@ -51,6 +51,31 @@ class PublicPackageTests(unittest.TestCase):
         self.assertTrue(result["perfect"])
         self.assertEqual(result["candidate"], 1)
 
+    def test_cleanup_removes_only_old_rejected_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for candidate, perfect in ((1, False), (2, False), (3, True)):
+                run = root / f"v{candidate}-candidate" / "run"
+                artifacts = root / f"v{candidate}-candidate" / "artifacts" / f"demo-v{candidate}"
+                run.mkdir(parents=True)
+                artifacts.mkdir(parents=True)
+                (artifacts / "model.gguf").write_text("model", encoding="utf-8")
+                (run / "monitor_state.json").write_text(
+                    json.dumps({"phase": "perfect_score" if perfect else "failed", "perfect": perfect, "candidate": candidate}),
+                    encoding="utf-8",
+                )
+
+            removed = candidate_loop.cleanup_rejected_artifacts({
+                "enabled": True,
+                "retain_latest_candidates": 2,
+                "automation_root": str(root),
+            })
+
+            self.assertEqual([path.name for path in removed], ["demo-v1"])
+            self.assertFalse((root / "v1-candidate" / "artifacts" / "demo-v1").exists())
+            self.assertTrue((root / "v2-candidate" / "artifacts" / "demo-v2").exists())
+            self.assertTrue((root / "v3-candidate" / "artifacts" / "demo-v3").exists())
+
     def test_monitor_uses_generic_single_instance_namespace(self) -> None:
         self.assertTrue(training_monitor.singleton_mutex_name("demo").startswith("Local\\TrainingCandidateMonitor-"))
 
