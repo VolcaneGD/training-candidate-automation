@@ -26,6 +26,12 @@ class PublicPackageTests(unittest.TestCase):
         self.assertEqual(training_monitor.dashboard_text("ja", "artifacts"), "アーティファクト")
         self.assertEqual(training_monitor.dashboard_stage_label("modal_train", "ja"), "Modal で学習")
 
+    def test_japanese_stage_metric_wraps_with_a_smaller_font(self) -> None:
+        self.assertEqual(
+            training_monitor.dashboard_metric_value_options("stage", "ja"),
+            {"font": ("MS Gothic", 7), "wraplength": 118},
+        )
+
     def test_retry_wait_elapsed_counts_from_retry_start(self) -> None:
         self.assertEqual(training_monitor.stage_elapsed_seconds(
             {"phase": "stage_retry_wait", "retry_started_at": 100.0}, now=107.0,

@@ -49,6 +49,15 @@ def dashboard_stage_label(stage: object, language: str) -> str:
     }.get(value, value)
 
 
+def dashboard_metric_value_options(metric: str, language: str) -> dict[str, object]:
+    if metric == "stage" and language == "ja":
+        return {"font": (dashboard_font(language), 7), "wraplength": 118}
+    return {
+        "font": (dashboard_font(language), 9) if language == "ja" else ("Segoe UI Semibold", 9),
+        "wraplength": 0,
+    }
+
+
 def safety_cap_guidance(language: str) -> str:
     return dashboard_text(language, "action")
 
@@ -543,6 +552,7 @@ class TrainingMonitorApp:
         cards = tk.Frame(self.tk, background=self.theme["background"])
         cards.pack(fill="x", padx=16)
         self.metric_labels = {}
+        self.metric_value_labels = {}
         for column, (key, value) in enumerate((("candidate", self.metrics["candidate"]), ("stage", self.metrics["stage"]), ("elapsed", self.metrics["elapsed"]), ("artifacts", self.metrics["artifacts"]))):
             cards.grid_columnconfigure(column, weight=1, uniform="metric")
             card = tk.Frame(cards, background=self.theme["surface"], highlightbackground=self.theme["border"], highlightthickness=1)
@@ -550,7 +560,9 @@ class TrainingMonitorApp:
             metric_label = tk.Label(card, text=dashboard_text(self.language, key), background=self.theme["surface"], foreground=self.theme["muted"], font=("Segoe UI", 7))
             metric_label.pack(anchor="w", padx=8, pady=(7, 1))
             self.metric_labels[key] = metric_label
-            tk.Label(card, textvariable=value, background=self.theme["surface"], foreground=self.theme["text"], font=("Segoe UI Semibold", 9)).pack(anchor="w", padx=8, pady=(0, 7))
+            value_label = tk.Label(card, textvariable=value, justify="left", anchor="w", background=self.theme["surface"], foreground=self.theme["text"], font=("Segoe UI Semibold", 9))
+            value_label.pack(anchor="w", padx=8, pady=(0, 7))
+            self.metric_value_labels[key] = value_label
 
         self.log_label = tk.Label(self.tk, text=dashboard_text(self.language, "live_log"), anchor="w", background=self.theme["background"], foreground=self.theme["muted"], font=("Segoe UI", 8))
         self.log_label.pack(fill="x", padx=16, pady=(12, 4))
@@ -576,7 +588,12 @@ class TrainingMonitorApp:
         self.log_label.configure(text=dashboard_text(self.language, "live_log"))
         self.language_button.configure(text=dashboard_text(self.language, "language"))
         for key, label in self.metric_labels.items():
-            label.configure(text=dashboard_text(self.language, key))
+            label.configure(
+                text=dashboard_text(self.language, key),
+                font=(dashboard_font(self.language), 7) if self.language == "ja" else ("Segoe UI", 7),
+            )
+        for key, label in self.metric_value_labels.items():
+            label.configure(**dashboard_metric_value_options(key, self.language))
         self.log_label.configure(font=(dashboard_font(self.language), 9))
         self.log.configure(font=(dashboard_font(self.language) if self.language == "ja" else "Cascadia Mono", 10 if self.language == "ja" else 9))
         self.refresh()
