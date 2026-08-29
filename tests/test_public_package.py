@@ -76,6 +76,8 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIn("Stage: download_merged", report)
         self.assertIn(r"D:\\run\\stage.log", report)
         self.assertIn("fixed: 7/8", report)
+        self.assertTrue(report.startswith("```text\n"))
+        self.assertTrue(report.endswith("\n```"))
 
     def test_dead_process_overrides_stale_running_phase(self) -> None:
         self.assertEqual(

@@ -275,7 +275,7 @@ def stop_report_text(state: dict[str, object]) -> str:
                 score_lines.append(f"- {label}: {passed}/{cases}")
         if score_lines:
             lines.extend(["Scores:", *score_lines])
-    return "\n".join(lines)
+    return "```text\n" + "\n".join(lines) + "\n```"
 
 
 def dashboard_activity_label(elapsed_seconds: int, refresh_tick: int, *, is_running: bool = True) -> str:
