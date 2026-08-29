@@ -88,6 +88,8 @@ def dashboard_status_badge(phase: object, overall_state: object) -> tuple[str, s
         return "COMPLETE", "#86efac", False
     if value in {"failed", "candidate_cap_reached"} or str(overall_state) == "failed":
         return "STOPPED", "#fb7185", False
+    if str(overall_state) != "running":
+        return "STOPPED", "#fb7185", False
     if value in {"stage_retry_wait", "orchestrator_recovering"}:
         return "RETRYING", "#fbbf24", False
     if value in {"stage_running", "repair_running", "candidate_started", "scoring"}:

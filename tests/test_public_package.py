@@ -32,6 +32,12 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIsNone(training_monitor.recovery_request_key(state))
         self.assertIn("ACTION REQUIRED", training_monitor.completion_log_summary(state))
 
+    def test_dead_process_overrides_stale_running_phase(self) -> None:
+        self.assertEqual(
+            training_monitor.dashboard_status_badge("stage_running", "completed"),
+            ("STOPPED", "#fb7185", False),
+        )
+
     def test_score_gated_run_completes_with_a_generic_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
