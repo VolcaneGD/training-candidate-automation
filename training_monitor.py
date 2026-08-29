@@ -71,6 +71,15 @@ def stage_failure_guidance(language: str) -> str:
     )
 
 
+def regression_guidance(language: str) -> str:
+    return (
+        "ACTION REQUIRED — A previously passing score regressed. Do not promote or "
+        "start another candidate until Codex has inspected the score report and curriculum."
+        if language != "ja" else
+        "要対応 — 以前合格した評価が低下しました。Codex がスコアとカリキュラムを確認するまで、昇格や次候補の開始を行わないでください。"
+    )
+
+
 def dashboard_font(language: str) -> str:
     """Use a clear standard Windows Japanese UI font in Japanese mode."""
     return "Meiryo UI" if language == "ja" else "Segoe UI"
@@ -226,6 +235,8 @@ def completion_log_summary(state: dict[str, object], language: str = "en") -> st
             summary += "\n\n" + safety_cap_guidance(language)
         elif reason == "stage_failed":
             summary += "\n\n" + stage_failure_guidance(language)
+        elif reason == "regression_detected":
+            summary += "\n\n" + regression_guidance(language)
         return summary
     return ""
 

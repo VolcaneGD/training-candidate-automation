@@ -134,6 +134,45 @@ def _cap_recovery(config: dict[str, object]) -> tuple[int, list[object]] | None:
     return maximum, command
 
 
+def _regression_guards(config: dict[str, object]) -> list[dict[str, object]]:
+    raw = config.get("regression_guards", [])
+    if not isinstance(raw, list):
+        raise ValueError("regression_guards must be a list")
+    guards: list[dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("each regression guard must be an object")
+        path = item.get("path")
+        minimum = item.get("minimum_passed")
+        if not isinstance(path, str) or not path:
+            raise ValueError("each regression guard needs a path")
+        if not isinstance(minimum, int) or minimum < 0:
+            raise ValueError("each regression guard needs a non-negative minimum_passed")
+        guards.append({"path": path, "minimum_passed": minimum})
+    return guards
+
+
+def regression_violations(
+    guards: list[dict[str, object]], context: dict[str, object], workdir: Path,
+    scores: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Return score reports that fell below a configured previously-passing baseline."""
+    score_by_path = {str(score.get("path")): score for score in scores}
+    violations: list[dict[str, object]] = []
+    for guard in guards:
+        path = Path(_render(str(guard["path"]), context))
+        if not path.is_absolute():
+            path = workdir / path
+        score = score_by_path.get(str(path))
+        if score is None:
+            raise ValueError(f"regression guard does not match a score report: {path}")
+        passed = score.get("passed")
+        minimum = guard["minimum_passed"]
+        if isinstance(passed, int) and isinstance(minimum, int) and passed < minimum:
+            violations.append({"path": str(path), "passed": passed, "minimum_passed": minimum})
+    return violations
+
+
 def cleanup_rejected_artifacts(config: dict[str, object]) -> list[Path]:
     """Delete only old, terminal, rejected candidate artifact directories."""
     raw = config.get("artifact_cleanup")
@@ -193,6 +232,7 @@ def run_loop(
     if not isinstance(prepare_directories, list) or not all(isinstance(item, str) for item in prepare_directories):
         raise ValueError("prepare_directories must be a list of paths")
     cap_recovery = _cap_recovery(config)
+    regression_guards = _regression_guards(config)
 
     previous_release_name = initial_resume_adapter
     for candidate in range(first_candidate, first_candidate + maximum):
@@ -321,6 +361,12 @@ def run_loop(
         except ValueError as error:
             result = {"perfect": False, "reason": "score_report_invalid", "candidate": candidate, "error": str(error)}
             _write_json(state_path, {"phase": "failed", **result})
+            return result
+        regressions = regression_violations(regression_guards, context, workdir, scores)
+        if regressions:
+            result = {"perfect": False, "reason": "regression_detected", "candidate": candidate, "release_name": release_name, "scores": scores, "regressions": regressions}
+            _write_json(state_path, {"phase": "failed", **result})
+            notifier("Training automation stopped", f"Candidate {candidate} regressed a protected score.")
             return result
         if perfect:
             result = {"perfect": True, "candidate": candidate, "release_name": release_name, "scores": scores}

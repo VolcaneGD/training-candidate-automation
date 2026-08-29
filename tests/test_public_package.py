@@ -65,6 +65,13 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIsNone(training_monitor.recovery_request_key(state))
         self.assertIn("ACTION REQUIRED", training_monitor.completion_log_summary(state))
 
+    def test_regression_stop_includes_action_guidance(self) -> None:
+        summary = training_monitor.completion_log_summary({
+            "phase": "failed", "reason": "regression_detected", "candidate": 10,
+        })
+        self.assertIn("ACTION REQUIRED", summary)
+        self.assertIn("regression", summary.lower())
+
     def test_stop_report_contains_copy_ready_failure_details(self) -> None:
         report = training_monitor.stop_report_text({
             "phase": "failed", "reason": "stage_failed", "candidate": 9,
@@ -233,6 +240,37 @@ class PublicPackageTests(unittest.TestCase):
             self.assertEqual(commands[-1][3], "1")
             self.assertEqual(recovery_states[0]["reason"], "candidate_cap_reached")
             self.assertEqual(recovery_states[0]["scores"][0]["passed"], 1)
+
+    def test_regression_guard_stops_candidate_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            commands: list[list[str]] = []
+
+            def runner(command: list[str], _workdir: Path, _log_path: Path) -> int:
+                commands.append(command)
+                (root / "score-1.json").write_text('{"passed": 1, "cases": 2}', encoding="utf-8")
+                return 0
+
+            result = candidate_loop.run_loop(
+                {
+                    "max_candidates": 1,
+                    "release_template": "candidate-{candidate}",
+                    "workdir": str(root),
+                    "stages": [{"name": "evaluate", "command": ["evaluate"]}],
+                    "score_reports": [{"path": "score-{candidate}.json"}],
+                    "regression_guards": [{"path": "score-{candidate}.json", "minimum_passed": 2}],
+                    "cap_recovery": {"max_handoffs": 1, "command": ["must-not-run"]},
+                },
+                run_dir=root / "run",
+                command_runner=runner,
+                notifier=lambda *_: None,
+            )
+            state = json.loads((root / "run" / "monitor_state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(result["reason"], "regression_detected")
+        self.assertEqual(result["regressions"][0]["minimum_passed"], 2)
+        self.assertEqual(state["phase"], "failed")
+        self.assertNotIn(["must-not-run"], commands)
 
     def test_monitor_launcher_forwards_an_explicit_recovery_task(self) -> None:
         launcher = ROOT / "scripts" / "launch_training_monitor.ps1"

@@ -67,6 +67,15 @@ Set `retry_attempts` and `retry_delay_seconds` globally or per stage to resume t
 
 The runner never retries past `max_candidates` implicitly, activates a candidate, or deletes old models. For fully automated but still bounded continuation, configure `cap_recovery` with a positive `max_handoffs` and a command array. On a cap miss, TCA writes `cap_recovery_scores.json`, invokes that command with `{scores_path}`, `{run_dir}`, `{candidate}`, and `{release_name}`, and records `cap_recovery_started`. The recovery command owns domain-specific error classification and must launch the next bounded configuration; once `max_handoffs` is exhausted, TCA stays at `candidate_cap_reached`.
 
+Use `regression_guards` to protect scores that were already passing. A guard compares a configured score path with `minimum_passed`; a below-baseline result ends the run as `regression_detected`, writes the scores to the monitor state, and bypasses `repair_commands` and `cap_recovery`. This prevents a newly targeted repair from silently replacing a broader successful candidate.
+
+```json
+"regression_guards": [
+  {"path": "scores/{release_name}.boundary.json", "minimum_passed": 6},
+  {"path": "scores/{release_name}.runtime.json", "minimum_passed": 3}
+]
+```
+
 ```json
 "cap_recovery": {
   "max_handoffs": 2,
