@@ -19,7 +19,7 @@ class PublicPackageTests(unittest.TestCase):
     def test_dashboard_locale_provides_japanese_action_guidance(self) -> None:
         self.assertEqual(training_monitor.dashboard_text("ja", "live_log"), "ライブログ")
         self.assertIn("Codex", training_monitor.safety_cap_guidance("ja"))
-        self.assertEqual(training_monitor.dashboard_font("ja"), "MS Gothic")
+        self.assertEqual(training_monitor.dashboard_font("ja"), "Meiryo UI")
 
     def test_dashboard_locale_translates_metric_and_stage_labels(self) -> None:
         self.assertEqual(training_monitor.dashboard_text("ja", "candidate"), "現候補")
@@ -29,7 +29,11 @@ class PublicPackageTests(unittest.TestCase):
     def test_japanese_stage_metric_wraps_with_a_smaller_font(self) -> None:
         self.assertEqual(
             training_monitor.dashboard_metric_value_options("stage", "ja"),
-            {"font": ("MS Gothic", 7), "wraplength": 118},
+            {"font": ("Meiryo UI", 8), "wraplength": 118},
+        )
+        self.assertEqual(
+            training_monitor.dashboard_metric_label_options("artifacts", "ja"),
+            {"font": ("Meiryo UI", 8), "wraplength": 118},
         )
 
     def test_retry_wait_elapsed_counts_from_retry_start(self) -> None:
