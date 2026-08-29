@@ -53,6 +53,10 @@ class PublicPackageTests(unittest.TestCase):
             750,
         )
 
+    def test_monitor_render_heartbeat_becomes_stale_after_five_seconds(self) -> None:
+        self.assertFalse(training_monitor.monitor_heartbeat_stale(100.0, now=104.9))
+        self.assertTrue(training_monitor.monitor_heartbeat_stale(100.0, now=105.0))
+
     def test_existing_event_log_supplies_a_legacy_run_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             event_path = Path(temp_dir) / "automation_events.jsonl"

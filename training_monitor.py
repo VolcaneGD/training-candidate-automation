@@ -21,6 +21,7 @@ RUNTIME_SETTING_NAMES = (
 )
 RECOVERY_CONFIRMATION_SECONDS = 30
 HEARTBEAT_STALE_SECONDS = 45
+MONITOR_HEARTBEAT_STALE_SECONDS = 5
 
 TEXT = {
     "en": {"live_log": "LIVE LOG", "language": "日本語", "candidate": "CANDIDATE", "stage": "STAGE", "elapsed": "ELAPSED", "artifacts": "ARTIFACTS", "action": "ACTION REQUIRED — Candidate safety cap reached. Report this screen to Codex to inspect the score, improve the curriculum, set a new positive cap, and resume a bounded run."},
@@ -305,6 +306,11 @@ def next_refresh_delay_ms(
     return max(1, round((refresh_seconds - (current_time - refresh_started_at)) * 1000))
 
 
+def monitor_heartbeat_stale(rendered_at: float | None, *, now: float | None = None) -> bool:
+    current_time = time.time() if now is None else now
+    return not isinstance(rendered_at, (int, float)) or current_time - rendered_at >= MONITOR_HEARTBEAT_STALE_SECONDS
+
+
 def stage_elapsed_seconds(state: dict[str, object], *, now: float | None = None) -> int:
     """Return the current stage duration, frozen whenever no stage is running."""
     phase = state.get("phase")
@@ -344,6 +350,11 @@ def singleton_mutex_name(instance_key: str) -> str:
 def runtime_settings_path(instance_key: str) -> Path:
     digest = hashlib.sha256(instance_key.encode("utf-8")).hexdigest()[:24]
     return Path(tempfile.gettempdir()) / f"training-candidate-monitor-{digest}.json"
+
+
+def monitor_heartbeat_path(instance_key: str) -> Path:
+    digest = hashlib.sha256(instance_key.encode("utf-8")).hexdigest()[:24]
+    return Path(tempfile.gettempdir()) / f"training-candidate-monitor-heartbeat-{digest}.json"
 
 
 def apply_runtime_settings(args: argparse.Namespace, payload: dict[str, object]) -> argparse.Namespace:
@@ -588,6 +599,7 @@ class TrainingMonitorApp:
         self.args = args
         self.language = "en"
         self.settings_path = settings_path
+        self.heartbeat_path = monitor_heartbeat_path(args.instance_key)
         self.settings_mtime_ns = -1
         self.tk = tk.Tk()
         self.tk.title(args.title)
@@ -802,6 +814,9 @@ class TrainingMonitorApp:
         else:
             self.log.insert("1.0", log_text)
         self.log.configure(state="disabled")
+        temporary = self.heartbeat_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"rendered_at": time.time(), "process_id": os.getpid()}), encoding="utf-8")
+        temporary.replace(self.heartbeat_path)
         if self.args.notify and state in {"completed", "failed"} and state not in self.notified:
             send_notification(self.args.title, f"Job {state}.")
             self.notified.add(state)
