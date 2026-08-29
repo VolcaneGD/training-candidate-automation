@@ -272,6 +272,32 @@ class PublicPackageTests(unittest.TestCase):
         self.assertEqual(state["phase"], "failed")
         self.assertNotIn(["must-not-run"], commands)
 
+    def test_regression_guard_distinguishes_dotted_scores_in_one_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config = {
+                "max_candidates": 1,
+                "release_template": "candidate-{candidate}",
+                "workdir": str(root),
+                "stages": [{"name": "evaluate", "command": ["evaluate"]}],
+                "score_reports": [
+                    {"path": "runtime-{candidate}.json", "passed_key": "summary.primary.passed", "cases_key": "summary.primary.cases"},
+                    {"path": "runtime-{candidate}.json", "passed_key": "summary.secondary.passed", "cases_key": "summary.secondary.cases"},
+                ],
+                "regression_guards": [
+                    {"path": "runtime-{candidate}.json", "passed_key": "summary.primary.passed", "minimum_passed": 3},
+                    {"path": "runtime-{candidate}.json", "passed_key": "summary.secondary.passed", "minimum_passed": 1},
+                ],
+            }
+
+            def runner(_command: list[str], _workdir: Path, _log_path: Path) -> int:
+                (root / "runtime-1.json").write_text('{"summary":{"primary":{"passed":3,"cases":3},"secondary":{"passed":1,"cases":1}}}', encoding="utf-8")
+                return 0
+
+            result = candidate_loop.run_loop(config, run_dir=root / "run", command_runner=runner, notifier=lambda *_: None)
+
+        self.assertTrue(result["perfect"])
+
     def test_monitor_launcher_forwards_an_explicit_recovery_task(self) -> None:
         launcher = ROOT / "scripts" / "launch_training_monitor.ps1"
         result = subprocess.run(

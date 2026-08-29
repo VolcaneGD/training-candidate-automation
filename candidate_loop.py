@@ -90,7 +90,12 @@ def _read_scores(reports: list[object], context: dict[str, object], workdir: Pat
                 raise ValueError("score values must be integers")
         except (OSError, json.JSONDecodeError, KeyError, ValueError) as error:
             raise ValueError(f"invalid score report {path}: {error}") from error
-        results.append({"path": str(path), "passed": passed, "cases": cases, "perfect": cases > 0 and passed == cases})
+        results.append({
+            "path": str(path), "passed": passed, "cases": cases,
+            "passed_key": str(raw.get("passed_key", "passed")),
+            "cases_key": str(raw.get("cases_key", "cases")),
+            "perfect": cases > 0 and passed == cases,
+        })
     return all(bool(result["perfect"]) for result in results), results
 
 
@@ -144,11 +149,14 @@ def _regression_guards(config: dict[str, object]) -> list[dict[str, object]]:
             raise ValueError("each regression guard must be an object")
         path = item.get("path")
         minimum = item.get("minimum_passed")
+        passed_key = item.get("passed_key", "passed")
         if not isinstance(path, str) or not path:
             raise ValueError("each regression guard needs a path")
         if not isinstance(minimum, int) or minimum < 0:
             raise ValueError("each regression guard needs a non-negative minimum_passed")
-        guards.append({"path": path, "minimum_passed": minimum})
+        if not isinstance(passed_key, str) or not passed_key:
+            raise ValueError("each regression guard needs a non-empty passed_key")
+        guards.append({"path": path, "passed_key": passed_key, "minimum_passed": minimum})
     return guards
 
 
@@ -157,19 +165,23 @@ def regression_violations(
     scores: list[dict[str, object]],
 ) -> list[dict[str, object]]:
     """Return score reports that fell below a configured previously-passing baseline."""
-    score_by_path = {str(score.get("path")): score for score in scores}
+    score_by_path = {
+        (str(score.get("path")), str(score.get("passed_key", "passed"))): score
+        for score in scores
+    }
     violations: list[dict[str, object]] = []
     for guard in guards:
         path = Path(_render(str(guard["path"]), context))
         if not path.is_absolute():
             path = workdir / path
-        score = score_by_path.get(str(path))
+        passed_key = str(guard["passed_key"])
+        score = score_by_path.get((str(path), passed_key))
         if score is None:
             raise ValueError(f"regression guard does not match a score report: {path}")
         passed = score.get("passed")
         minimum = guard["minimum_passed"]
         if isinstance(passed, int) and isinstance(minimum, int) and passed < minimum:
-            violations.append({"path": str(path), "passed": passed, "minimum_passed": minimum})
+            violations.append({"path": str(path), "passed_key": passed_key, "passed": passed, "minimum_passed": minimum})
     return violations
 
 
