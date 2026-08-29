@@ -131,6 +131,17 @@ class PublicPackageTests(unittest.TestCase):
             ("STOPPED", "#fb7185", False),
         )
 
+    def test_candidate_cap_is_complete_but_keeps_its_score_report(self) -> None:
+        self.assertEqual(
+            training_monitor.dashboard_status_badge("candidate_cap_reached", "completed"),
+            ("COMPLETE", "#86efac", False),
+        )
+        summary = training_monitor.completion_log_summary({
+            "phase": "candidate_cap_reached", "candidate": 48,
+            "reason": "candidate_cap_reached",
+        })
+        self.assertTrue(summary.startswith("COMPLETE — Candidate 48"))
+
     def test_stop_report_contains_copy_ready_failure_details(self) -> None:
         report = training_monitor.stop_report_text({
             "phase": "failed", "reason": "stage_failed", "candidate": 9,

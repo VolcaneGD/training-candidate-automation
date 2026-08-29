@@ -130,9 +130,9 @@ def dashboard_phase_label(phase: object) -> str:
 def dashboard_status_badge(phase: object, overall_state: object) -> tuple[str, str, bool]:
     """Return the Status Badge text, accent color, and pulse state."""
     value = str(phase)
-    if value == "perfect_score":
+    if value in {"perfect_score", "candidate_cap_reached"}:
         return "COMPLETE", "#86efac", False
-    if value in {"failed", "candidate_cap_reached"} or str(overall_state) == "failed":
+    if value == "failed" or str(overall_state) == "failed":
         return "STOPPED", "#fb7185", False
     if str(overall_state) != "running":
         return "STOPPED", "#fb7185", False
@@ -234,7 +234,8 @@ def completion_log_summary(state: dict[str, object], language: str = "en") -> st
     if phase in {"failed", "candidate_cap_reached"}:
         reason = str(state.get("reason") or phase)
         stage = str(state.get("stage") or "-")
-        lines = [f"STOPPED — Candidate {candidate}", f"reason: {reason}", f"stage: {stage}"]
+        heading = "COMPLETE" if phase == "candidate_cap_reached" else "STOPPED"
+        lines = [f"{heading} — Candidate {candidate}", f"reason: {reason}", f"stage: {stage}"]
         scores = state.get("scores", [])
         if isinstance(scores, list):
             score_lines: list[str] = []
@@ -264,9 +265,9 @@ def completion_summary_color(state: object) -> str | None:
     if not isinstance(state, dict):
         return None
     phase = str(state.get("phase") or "")
-    if phase == "perfect_score":
+    if phase in {"perfect_score", "candidate_cap_reached"}:
         return "#86efac"
-    if phase in {"failed", "candidate_cap_reached"}:
+    if phase == "failed":
         return "#fb7185"
     return None
 
@@ -855,10 +856,11 @@ class TrainingMonitorApp:
         self.badge_color = badge_color
         self.badge_pulsing = badge_pulsing
         stopped = badge_text == "STOPPED"
+        terminal_report = stopped or snapshot["automation_phase"] == "candidate_cap_reached"
         report_state = dict(snapshot["automation_state"])
         if snapshot["liveness_reason"]:
             report_state["reason"] = snapshot["liveness_reason"]
-        self.last_stop_report = stop_report_text(report_state) if stopped else ""
+        self.last_stop_report = stop_report_text(report_state) if terminal_report else ""
         self.copy_button.configure(
             state="normal" if self.last_stop_report else "disabled",
             text=copy_report_button_text(self.language),
