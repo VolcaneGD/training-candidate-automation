@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -390,6 +391,20 @@ class PublicPackageTests(unittest.TestCase):
         monitor_source = (ROOT / "scripts" / "launch_training_monitor.ps1").read_text(encoding="utf-8")
         self.assertIn("Get-CimInstance Win32_Process", monitor_source)
         self.assertIn("Stop-Process", monitor_source)
+
+    def test_stage_commands_are_started_without_a_console_window(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "stage.log"
+            with mock.patch.object(candidate_loop.subprocess, "Popen") as popen:
+                popen.return_value.poll.return_value = 0
+                popen.return_value.returncode = 0
+                result = candidate_loop._command_runner(["modal", "run"], Path(temp_dir), log_path)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            popen.call_args.kwargs["creationflags"],
+            getattr(candidate_loop.subprocess, "CREATE_NO_WINDOW", 0),
+        )
 
 
 if __name__ == "__main__":

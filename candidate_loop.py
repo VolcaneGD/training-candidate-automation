@@ -69,7 +69,13 @@ def _command_runner(
     with log_path.open("w", encoding="utf-8") as log:
         log.write("$ " + subprocess.list2cmdline(command) + "\n\n")
         log.flush()
-        process = subprocess.Popen(command, cwd=workdir, stdout=log, stderr=subprocess.STDOUT)
+        process = subprocess.Popen(
+            command,
+            cwd=workdir,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
         if on_started:
             on_started(process.pid)
         while process.poll() is None:
