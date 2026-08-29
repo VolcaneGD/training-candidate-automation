@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import candidate_loop
+import monitor_watchdog
 import training_monitor
 
 
@@ -405,6 +406,19 @@ class PublicPackageTests(unittest.TestCase):
             popen.call_args.kwargs["creationflags"],
             getattr(candidate_loop.subprocess, "CREATE_NO_WINDOW", 0),
         )
+
+    def test_watchdog_relaunch_preserves_its_own_process(self) -> None:
+        arguments = __import__("argparse").Namespace(
+            launcher=Path(r"C:\\tools\\launch_training_monitor.ps1"),
+            title="Test job", watch_path=r"D:\\run", log_path=r"D:\\run\\automation.log",
+            state_path=Path(r"D:\\run\\monitor_state.json"), process_id=42,
+            instance_key="test-monitor",
+        )
+
+        command = monitor_watchdog.recovery_launcher_command(arguments)
+
+        self.assertIn("-KeepWatchdog", command)
+        self.assertIn("-ReplaceExisting", command)
 
 
 if __name__ == "__main__":

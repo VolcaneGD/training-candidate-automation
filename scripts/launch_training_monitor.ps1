@@ -10,6 +10,7 @@ param(
     [string]$RecoveryTask,
     [string]$InstanceKey = 'training-candidate-monitor',
     [switch]$ReplaceExisting,
+    [switch]$KeepWatchdog,
     [switch]$NoNotify,
     [switch]$WhatIf
 )
