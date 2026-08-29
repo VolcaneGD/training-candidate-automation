@@ -61,20 +61,37 @@ def _render(value: str, context: dict[str, object]) -> str:
         raise ValueError(f"unknown template field: {error.args[0]}") from error
 
 
+def windowless_command(
+    command: list[str], *, executable_exists: Callable[[Path], bool] = Path.is_file,
+) -> list[str]:
+    """Prefer pythonw for stage commands when it is available beside python."""
+    if not command:
+        return command
+    executable = Path(command[0])
+    windowed = executable.with_name("pythonw.exe")
+    if executable.name.lower() == "python.exe" and executable_exists(windowed):
+        return [str(windowed), *command[1:]]
+    return command
+
+
 def _command_runner(
     command: list[str], workdir: Path, log_path: Path,
     *, on_started: Callable[[int], None] | None = None,
     on_heartbeat: Callable[[], None] | None = None,
 ) -> int:
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
     with log_path.open("w", encoding="utf-8") as log:
         log.write("$ " + subprocess.list2cmdline(command) + "\n\n")
         log.flush()
         process = subprocess.Popen(
-            command,
+            windowless_command(command),
             cwd=workdir,
             stdout=log,
             stderr=subprocess.STDOUT,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            startupinfo=startupinfo,
         )
         if on_started:
             on_started(process.pid)

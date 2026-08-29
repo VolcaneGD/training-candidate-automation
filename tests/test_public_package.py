@@ -407,6 +407,21 @@ class PublicPackageTests(unittest.TestCase):
             getattr(candidate_loop.subprocess, "CREATE_NO_WINDOW", 0),
         )
 
+        startupinfo = popen.call_args.kwargs["startupinfo"]
+        self.assertEqual(
+            startupinfo.dwFlags & candidate_loop.subprocess.STARTF_USESHOWWINDOW,
+            candidate_loop.subprocess.STARTF_USESHOWWINDOW,
+        )
+        self.assertEqual(startupinfo.wShowWindow, candidate_loop.subprocess.SW_HIDE)
+
+    def test_stage_command_uses_pythonw_when_available(self) -> None:
+        actual = candidate_loop.windowless_command(
+            [r"D:\MicroCodeTraining\.venv-pytorch212b\Scripts\python.exe", "-m", "modal"],
+            executable_exists=lambda _path: True,
+        )
+
+        self.assertEqual(actual[0], r"D:\MicroCodeTraining\.venv-pytorch212b\Scripts\pythonw.exe")
+
     def test_watchdog_relaunch_preserves_its_own_process(self) -> None:
         arguments = __import__("argparse").Namespace(
             launcher=Path(r"C:\\tools\\launch_training_monitor.ps1"),

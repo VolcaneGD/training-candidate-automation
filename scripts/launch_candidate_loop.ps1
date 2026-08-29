@@ -13,7 +13,12 @@ param(
 $toolRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $runner = Join-Path $toolRoot 'candidate_loop.py'
 $monitorLauncher = Join-Path $toolRoot 'scripts\launch_training_monitor.ps1'
-$python = (Get-Command python -ErrorAction Stop).Source
+$pythonConsole = (Get-Command python -ErrorAction Stop).Source
+$python = $pythonConsole
+$pythonResolved = (& $pythonConsole -c 'import sys; print(sys.executable)').Trim()
+if (-not (Test-Path -LiteralPath $pythonResolved)) { $pythonResolved = $pythonConsole }
+$pythonWindow = Join-Path (Split-Path -Parent $pythonResolved) 'pythonw.exe'
+if (Test-Path -LiteralPath $pythonWindow) { $python = $pythonWindow }
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
 $automationLog = Join-Path $RunDir 'automation.log'
