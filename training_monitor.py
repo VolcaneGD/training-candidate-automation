@@ -23,13 +23,30 @@ RECOVERY_CONFIRMATION_SECONDS = 30
 HEARTBEAT_STALE_SECONDS = 45
 
 TEXT = {
-    "en": {"live_log": "LIVE LOG", "language": "日本語", "action": "ACTION REQUIRED — Candidate safety cap reached. Report this screen to Codex to inspect the score, improve the curriculum, set a new positive cap, and resume a bounded run."},
-    "ja": {"live_log": "ライブログ", "language": "English", "action": "要対応 — 学習候補の安全上限に到達しました。この画面を Codex に報告し、スコア確認、カリキュラム改善、新しい正の上限設定、有界実行の再開を依頼してください。"},
+    "en": {"live_log": "LIVE LOG", "language": "日本語", "candidate": "CANDIDATE", "stage": "STAGE", "elapsed": "ELAPSED", "artifacts": "ARTIFACTS", "action": "ACTION REQUIRED — Candidate safety cap reached. Report this screen to Codex to inspect the score, improve the curriculum, set a new positive cap, and resume a bounded run."},
+    "ja": {"live_log": "ライブログ", "language": "English", "candidate": "現候補", "stage": "ステージ", "elapsed": "経過時間", "artifacts": "アーティファクト", "action": "要対応 — 学習候補の安全上限に到達しました。この画面を Codex に報告し、スコア確認、カリキュラム改善、新しい正の上限設定、有界実行の再開を依頼してください。"},
 }
 
 
 def dashboard_text(language: str, key: str) -> str:
     return TEXT.get(language, TEXT["en"]).get(key, TEXT["en"].get(key, key))
+
+
+def dashboard_stage_label(stage: object, language: str) -> str:
+    value = str(stage).replace("_", " ")
+    if language != "ja":
+        return value
+    return {
+        "upload curriculum": "カリキュラムをアップロード",
+        "modal train": "Modal で学習",
+        "modal merge": "Modal でマージ",
+        "download merged": "マージ済みモデルをダウンロード",
+        "convert q8 gguf": "Q8 GGUF に変換",
+        "fixed eval": "固定評価",
+        "boundary eval": "境界評価",
+        "multitool eval": "マルチツール評価",
+        "runtime eval": "実行時評価",
+    }.get(value, value)
 
 
 def safety_cap_guidance(language: str) -> str:
@@ -525,11 +542,14 @@ class TrainingMonitorApp:
 
         cards = tk.Frame(self.tk, background=self.theme["background"])
         cards.pack(fill="x", padx=16)
-        for column, (label, value) in enumerate((("CANDIDATE", self.metrics["candidate"]), ("STAGE", self.metrics["stage"]), ("ELAPSED", self.metrics["elapsed"]), ("ARTIFACTS", self.metrics["artifacts"]))):
+        self.metric_labels = {}
+        for column, (key, value) in enumerate((("candidate", self.metrics["candidate"]), ("stage", self.metrics["stage"]), ("elapsed", self.metrics["elapsed"]), ("artifacts", self.metrics["artifacts"]))):
             cards.grid_columnconfigure(column, weight=1, uniform="metric")
             card = tk.Frame(cards, background=self.theme["surface"], highlightbackground=self.theme["border"], highlightthickness=1)
             card.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else 4, 0))
-            tk.Label(card, text=label, background=self.theme["surface"], foreground=self.theme["muted"], font=("Segoe UI", 7)).pack(anchor="w", padx=8, pady=(7, 1))
+            metric_label = tk.Label(card, text=dashboard_text(self.language, key), background=self.theme["surface"], foreground=self.theme["muted"], font=("Segoe UI", 7))
+            metric_label.pack(anchor="w", padx=8, pady=(7, 1))
+            self.metric_labels[key] = metric_label
             tk.Label(card, textvariable=value, background=self.theme["surface"], foreground=self.theme["text"], font=("Segoe UI Semibold", 9)).pack(anchor="w", padx=8, pady=(0, 7))
 
         self.log_label = tk.Label(self.tk, text=dashboard_text(self.language, "live_log"), anchor="w", background=self.theme["background"], foreground=self.theme["muted"], font=("Segoe UI", 8))
@@ -555,6 +575,8 @@ class TrainingMonitorApp:
         self.language = "ja" if self.language == "en" else "en"
         self.log_label.configure(text=dashboard_text(self.language, "live_log"))
         self.language_button.configure(text=dashboard_text(self.language, "language"))
+        for key, label in self.metric_labels.items():
+            label.configure(text=dashboard_text(self.language, key))
         self.log_label.configure(font=(dashboard_font(self.language), 9))
         self.log.configure(font=("BIZ UDPGothic" if self.language == "ja" else "Cascadia Mono", 10 if self.language == "ja" else 9))
         self.refresh()
@@ -628,7 +650,7 @@ class TrainingMonitorApp:
             f"{dashboard_activity_label(elapsed, self.refresh_tick, is_running=stage_running)}"
         )
         self.metrics["candidate"].set(str(snapshot["automation_candidate"]))
-        self.metrics["stage"].set(str(snapshot["automation_stage"]).replace("_", " "))
+        self.metrics["stage"].set(dashboard_stage_label(snapshot["automation_stage"], self.language))
         self.metrics["elapsed"].set(dashboard_stage_elapsed_value(snapshot))
         self.metrics["artifacts"].set(f"{snapshot['artifact_files']} / {format_bytes(int(snapshot['artifact_bytes']))}")
         self.log.configure(state="normal")

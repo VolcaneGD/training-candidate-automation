@@ -21,6 +21,11 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIn("Codex", training_monitor.safety_cap_guidance("ja"))
         self.assertEqual(training_monitor.dashboard_font("ja"), "BIZ UDPGothic")
 
+    def test_dashboard_locale_translates_metric_and_stage_labels(self) -> None:
+        self.assertEqual(training_monitor.dashboard_text("ja", "candidate"), "現候補")
+        self.assertEqual(training_monitor.dashboard_text("ja", "artifacts"), "アーティファクト")
+        self.assertEqual(training_monitor.dashboard_stage_label("modal_train", "ja"), "Modal で学習")
+
     def test_retry_wait_elapsed_counts_from_retry_start(self) -> None:
         self.assertEqual(training_monitor.stage_elapsed_seconds(
             {"phase": "stage_retry_wait", "retry_started_at": 100.0}, now=107.0,
