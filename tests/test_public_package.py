@@ -69,6 +69,14 @@ class PublicPackageTests(unittest.TestCase):
         self.assertFalse(training_monitor.monitor_heartbeat_stale(100.0, now=104.9))
         self.assertTrue(training_monitor.monitor_heartbeat_stale(100.0, now=105.0))
 
+    def test_running_monitor_with_frozen_rendered_elapsed_is_stalled(self) -> None:
+        previous = {
+            "rendered_at": 100.0, "badge": "RUNNING",
+            "stage_started_at": 50.0, "stage_elapsed_seconds": 50,
+        }
+        current = {**previous, "rendered_at": 106.0}
+        self.assertTrue(training_monitor.monitor_render_progress_stalled(previous, current))
+
     def test_existing_event_log_supplies_a_legacy_run_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             event_path = Path(temp_dir) / "automation_events.jsonl"

@@ -2,7 +2,12 @@
 from __future__ import annotations
 import argparse, json, subprocess, time
 from pathlib import Path
-from training_monitor import SingleInstanceMutex, monitor_heartbeat_stale, monitor_heartbeat_path
+from training_monitor import (
+    SingleInstanceMutex,
+    monitor_heartbeat_stale,
+    monitor_heartbeat_path,
+    monitor_render_progress_stalled,
+)
 
 def recovery_launcher_command(arguments: argparse.Namespace) -> list[str]:
     """Restart only the monitor window, never this watchdog."""
@@ -13,13 +18,18 @@ def main() -> int:
     mutex=SingleInstanceMutex(a.instance_key+'-watchdog')
     if not mutex.acquire(): return 0
     heartbeat=monitor_heartbeat_path(a.instance_key)
+    previous_payload: object = None
     while True:
         try: state=json.loads(a.state_path.read_text(encoding='utf-8'))
         except (OSError,json.JSONDecodeError): state={}
         if state.get('phase')=='perfect_score': return 0
-        try: rendered=json.loads(heartbeat.read_text(encoding='utf-8')).get('rendered_at')
-        except (OSError,json.JSONDecodeError): rendered=None
-        if monitor_heartbeat_stale(rendered):
+        try: payload=json.loads(heartbeat.read_text(encoding='utf-8'))
+        except (OSError,json.JSONDecodeError): payload={}
+        rendered = payload.get('rendered_at') if isinstance(payload, dict) else None
+        if monitor_heartbeat_stale(rendered) or monitor_render_progress_stalled(previous_payload, payload):
             subprocess.run(recovery_launcher_command(a),check=False,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+            previous_payload = None
+        else:
+            previous_payload = payload
         time.sleep(2)
 if __name__=='__main__': raise SystemExit(main())

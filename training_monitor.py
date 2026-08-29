@@ -23,6 +23,7 @@ RUNTIME_SETTING_NAMES = (
 RECOVERY_CONFIRMATION_SECONDS = 30
 HEARTBEAT_STALE_SECONDS = 45
 MONITOR_HEARTBEAT_STALE_SECONDS = 5
+MONITOR_PROGRESS_STALL_SECONDS = 5
 
 TEXT = {
     "en": {"live_log": "LIVE LOG", "language": "日本語", "candidate": "CANDIDATE", "stage": "STAGE", "elapsed": "ELAPSED", "artifacts": "ARTIFACTS", "action": "ACTION REQUIRED — Candidate safety cap reached. Report this screen to Codex to inspect the score, improve the curriculum, set a new positive cap, and resume a bounded run."},
@@ -325,6 +326,30 @@ def next_refresh_delay_ms(
 def monitor_heartbeat_stale(rendered_at: float | None, *, now: float | None = None) -> bool:
     current_time = time.time() if now is None else now
     return not isinstance(rendered_at, (int, float)) or current_time - rendered_at >= MONITOR_HEARTBEAT_STALE_SECONDS
+
+
+def monitor_render_progress_stalled(previous: object, current: object) -> bool:
+    """Detect a live heartbeat whose RUNNING/RETRYING dashboard time stopped advancing."""
+    if not isinstance(previous, dict) or not isinstance(current, dict):
+        return False
+    if current.get("badge") not in {"RUNNING", "RETRYING"}:
+        return False
+    if previous.get("badge") != current.get("badge"):
+        return False
+    if previous.get("stage_started_at") != current.get("stage_started_at"):
+        return False
+    previous_rendered = previous.get("rendered_at")
+    current_rendered = current.get("rendered_at")
+    previous_elapsed = previous.get("stage_elapsed_seconds")
+    current_elapsed = current.get("stage_elapsed_seconds")
+    return (
+        isinstance(previous_rendered, (int, float))
+        and isinstance(current_rendered, (int, float))
+        and isinstance(previous_elapsed, int)
+        and isinstance(current_elapsed, int)
+        and current_rendered - previous_rendered >= MONITOR_PROGRESS_STALL_SECONDS
+        and current_elapsed <= previous_elapsed
+    )
 
 
 def stage_elapsed_seconds(state: dict[str, object], *, now: float | None = None) -> int:
@@ -869,7 +894,13 @@ class TrainingMonitorApp:
             self.log.insert("1.0", log_text)
         self.log.configure(state="disabled")
         temporary = self.heartbeat_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"rendered_at": time.time(), "process_id": os.getpid()}), encoding="utf-8")
+        temporary.write_text(json.dumps({
+            "rendered_at": time.time(), "process_id": os.getpid(),
+            "badge": badge_text,
+            "automation_phase": snapshot["automation_phase"],
+            "stage_started_at": snapshot["automation_state"].get("stage_started_at"),
+            "stage_elapsed_seconds": elapsed,
+        }), encoding="utf-8")
         temporary.replace(self.heartbeat_path)
         if self.args.notify and state in {"completed", "failed"} and state not in self.notified:
             send_notification(self.args.title, f"Job {state}.")
