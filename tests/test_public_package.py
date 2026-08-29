@@ -19,7 +19,7 @@ class PublicPackageTests(unittest.TestCase):
     def test_dashboard_locale_provides_japanese_action_guidance(self) -> None:
         self.assertEqual(training_monitor.dashboard_text("ja", "live_log"), "ライブログ")
         self.assertIn("Codex", training_monitor.safety_cap_guidance("ja"))
-        self.assertEqual(training_monitor.dashboard_font("ja"), "BIZ UDPGothic")
+        self.assertEqual(training_monitor.dashboard_font("ja"), "MS Gothic")
 
     def test_dashboard_locale_translates_metric_and_stage_labels(self) -> None:
         self.assertEqual(training_monitor.dashboard_text("ja", "candidate"), "現候補")

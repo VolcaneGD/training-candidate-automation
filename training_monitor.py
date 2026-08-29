@@ -63,8 +63,8 @@ def stage_failure_guidance(language: str) -> str:
 
 
 def dashboard_font(language: str) -> str:
-    """Prefer the installed UD font whenever the dashboard is in Japanese."""
-    return "BIZ UDPGothic" if language == "ja" else "Segoe UI"
+    """Use the familiar Windows Japanese system font in Japanese mode."""
+    return "MS Gothic" if language == "ja" else "Segoe UI"
 
 
 def dashboard_theme() -> dict[str, str]:
@@ -578,7 +578,7 @@ class TrainingMonitorApp:
         for key, label in self.metric_labels.items():
             label.configure(text=dashboard_text(self.language, key))
         self.log_label.configure(font=(dashboard_font(self.language), 9))
-        self.log.configure(font=("BIZ UDPGothic" if self.language == "ja" else "Cascadia Mono", 10 if self.language == "ja" else 9))
+        self.log.configure(font=(dashboard_font(self.language) if self.language == "ja" else "Cascadia Mono", 10 if self.language == "ja" else 9))
         self.refresh()
 
     def _animate_badge(self) -> None:
