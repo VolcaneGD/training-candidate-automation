@@ -9,6 +9,7 @@ param(
     [int]$RefreshSeconds = 1,
     [string]$RecoveryTask,
     [string]$InstanceKey = 'training-candidate-monitor',
+    [switch]$ReplaceExisting,
     [switch]$NoNotify,
     [switch]$WhatIf
 )
@@ -32,5 +33,15 @@ $quotedArguments = $arguments | ForEach-Object {
 if ($WhatIf) {
     Write-Output ("Start-Process -FilePath `"{0}`" -ArgumentList `"{1}`" -WorkingDirectory `"{2}`" -WindowStyle Hidden" -f $python, ($quotedArguments -join ' '), $toolRoot)
     exit 0
+}
+if ($ReplaceExisting) {
+    $instancePattern = [regex]::Escape($InstanceKey)
+    Get-CimInstance Win32_Process | Where-Object {
+        $_.Name -eq 'pythonw.exe' -and
+        $_.CommandLine -match 'training_monitor\.py' -and
+        $_.CommandLine -match $instancePattern
+    } | ForEach-Object {
+        Stop-Process -Id $_.ProcessId -Force
+    }
 }
 Start-Process -FilePath $python -ArgumentList ($quotedArguments -join ' ') -WorkingDirectory $toolRoot -WindowStyle Hidden | Out-Null

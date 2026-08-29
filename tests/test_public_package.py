@@ -236,6 +236,14 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIn("--recovery-task", result.stdout)
         self.assertIn("Example Training Recovery", result.stdout)
 
+    def test_candidate_launcher_replaces_a_stale_monitor(self) -> None:
+        launcher = ROOT / "scripts" / "launch_candidate_loop.ps1"
+        source = launcher.read_text(encoding="utf-8")
+        self.assertIn("$monitorArgs.ReplaceExisting = $true", source)
+        monitor_source = (ROOT / "scripts" / "launch_training_monitor.ps1").read_text(encoding="utf-8")
+        self.assertIn("Get-CimInstance Win32_Process", monitor_source)
+        self.assertIn("Stop-Process", monitor_source)
+
 
 if __name__ == "__main__":
     unittest.main()

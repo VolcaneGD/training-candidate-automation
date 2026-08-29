@@ -37,6 +37,7 @@ $monitorArgs = @{
     ProcessId = $process.Id
 }
 $monitorArgs.NoNotify = $true
+$monitorArgs.ReplaceExisting = $true
 if ($RecoveryTask) { $monitorArgs.RecoveryTask = $RecoveryTask }
 & $monitorLauncher @monitorArgs
 Write-Output ("Started candidate automation PID {0}; monitor opened." -f $process.Id)
