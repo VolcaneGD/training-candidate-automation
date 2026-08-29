@@ -250,6 +250,14 @@ def dashboard_activity_label(elapsed_seconds: int, refresh_tick: int, *, is_runn
     return f"Monitoring {elapsed_seconds // 60:02d}:{elapsed_seconds % 60:02d}  {indicators[refresh_tick % len(indicators)]}"
 
 
+def next_refresh_delay_ms(
+    refresh_seconds: int, *, refresh_started_at: float, now: float | None = None,
+) -> int:
+    """Keep refreshes aligned to the requested cadence despite snapshot work."""
+    current_time = time.monotonic() if now is None else now
+    return max(1, round((refresh_seconds - (current_time - refresh_started_at)) * 1000))
+
+
 def stage_elapsed_seconds(state: dict[str, object], *, now: float | None = None) -> int:
     """Return the current stage duration, frozen whenever no stage is running."""
     phase = state.get("phase")
@@ -650,6 +658,7 @@ class TrainingMonitorApp:
         self.tk.title(self.args.title)
 
     def refresh(self) -> None:
+        refresh_started_at = time.monotonic()
         self._reload_runtime_settings()
         snapshot = build_snapshot(
             watch_path=self.args.watch_path,
@@ -729,7 +738,10 @@ class TrainingMonitorApp:
             self.close_scheduled = True
             self.tk.after(5000, self.tk.destroy)
         self.refresh_tick += 1
-        self.tk.after(self.args.refresh_seconds * 1000, self.refresh)
+        self.tk.after(
+            next_refresh_delay_ms(self.args.refresh_seconds, refresh_started_at=refresh_started_at),
+            self.refresh,
+        )
 
     def run(self) -> None:
         self.tk.mainloop()

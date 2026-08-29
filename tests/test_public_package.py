@@ -47,6 +47,12 @@ class PublicPackageTests(unittest.TestCase):
             67,
         )
 
+    def test_refresh_delay_compensates_for_snapshot_work(self) -> None:
+        self.assertEqual(
+            training_monitor.next_refresh_delay_ms(1, refresh_started_at=100.0, now=100.25),
+            750,
+        )
+
     def test_existing_event_log_supplies_a_legacy_run_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             event_path = Path(temp_dir) / "automation_events.jsonl"
