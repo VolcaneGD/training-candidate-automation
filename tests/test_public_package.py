@@ -302,6 +302,45 @@ class PublicPackageTests(unittest.TestCase):
 
         self.assertTrue(result["perfect"])
 
+    def test_repair_receives_next_stronger_curriculum_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            commands: list[list[str]] = []
+
+            def runner(command: list[str], _workdir: Path, _log_path: Path) -> int:
+                commands.append(command)
+                if command[0] == "evaluate":
+                    (root / f"score-{command[1]}.json").write_text(
+                        '{"passed": 1, "cases": 2}', encoding="utf-8"
+                    )
+                return 0
+
+            result = candidate_loop.run_loop(
+                {
+                    "max_candidates": 2,
+                    "first_candidate": 4,
+                    "release_template": "candidate-{candidate}",
+                    "curriculum_template": "curriculum.v{curriculum_version}.jsonl",
+                    "initial_curriculum_version": 12,
+                    "workdir": str(root),
+                    "stages": [{"name": "evaluate", "command": ["evaluate", "{candidate}"]}],
+                    "score_reports": [{"path": "score-{candidate}.json"}],
+                    "repair_commands": [[
+                        "repair", "{curriculum_name}", "{next_curriculum_name}",
+                        "{scores_path}", "{next_curriculum_version}",
+                    ]],
+                },
+                run_dir=root / "run",
+                command_runner=runner,
+                notifier=lambda *_: None,
+            )
+
+        self.assertEqual(result["reason"], "candidate_cap_reached")
+        self.assertEqual(
+            commands[1][:5],
+            ["repair", "curriculum.v12.jsonl", "curriculum.v13.jsonl", str(root / "run" / "candidate-004-scores.json"), "13"],
+        )
+
     def test_monitor_launcher_forwards_an_explicit_recovery_task(self) -> None:
         launcher = ROOT / "scripts" / "launch_training_monitor.ps1"
         result = subprocess.run(

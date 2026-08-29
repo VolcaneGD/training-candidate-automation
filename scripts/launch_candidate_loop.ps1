@@ -13,7 +13,6 @@ param(
 $toolRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $runner = Join-Path $toolRoot 'candidate_loop.py'
 $monitorLauncher = Join-Path $toolRoot 'scripts\launch_training_monitor.ps1'
-$watchdog = Join-Path $toolRoot 'monitor_watchdog.py'
 $python = (Get-Command python -ErrorAction Stop).Source
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
@@ -41,8 +40,4 @@ $monitorArgs.NoNotify = $true
 $monitorArgs.ReplaceExisting = $true
 if ($RecoveryTask) { $monitorArgs.RecoveryTask = $RecoveryTask }
 & $monitorLauncher @monitorArgs
-$pythonWindow = Join-Path (Split-Path -Parent $python) 'pythonw.exe'
-if (Test-Path -LiteralPath $pythonWindow) { $watchdogPython = $pythonWindow } else { $watchdogPython = $python }
-$watchdogArgs = @($watchdog, '--instance-key', 'training-candidate-monitor', '--launcher', $monitorLauncher, '--title', $Title, '--watch-path', $RunDir, '--log-path', $automationLog, '--state-path', (Join-Path $RunDir 'monitor_state.json'), '--process-id', $process.Id)
-Start-Process -FilePath $watchdogPython -ArgumentList ($watchdogArgs | ForEach-Object { '"' + $_ + '"' }) -WorkingDirectory $toolRoot -WindowStyle Hidden | Out-Null
 Write-Output ("Started candidate automation PID {0}; monitor opened." -f $process.Id)

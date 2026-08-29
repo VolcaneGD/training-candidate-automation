@@ -124,6 +124,18 @@ def _validate_config(config: dict[str, object]) -> tuple[int, int, str, str, Pat
     return maximum, first_candidate, initial_resume_adapter, template, Path(workdir), stages, reports
 
 
+def _curriculum_settings(config: dict[str, object]) -> tuple[str | None, int | None]:
+    template = config.get("curriculum_template")
+    if template is None:
+        return None, None
+    version = config.get("initial_curriculum_version")
+    if not isinstance(template, str) or not template:
+        raise ValueError("curriculum_template must be a non-empty string")
+    if not isinstance(version, int) or version < 1:
+        raise ValueError("initial_curriculum_version must be a positive integer")
+    return template, version
+
+
 def _cap_recovery(config: dict[str, object]) -> tuple[int, list[object]] | None:
     raw = config.get("cap_recovery")
     if raw is None:
@@ -245,6 +257,7 @@ def run_loop(
         raise ValueError("prepare_directories must be a list of paths")
     cap_recovery = _cap_recovery(config)
     regression_guards = _regression_guards(config)
+    curriculum_template, initial_curriculum_version = _curriculum_settings(config)
 
     previous_release_name = initial_resume_adapter
     for candidate in range(first_candidate, first_candidate + maximum):
@@ -255,6 +268,21 @@ def run_loop(
             "resume_adapter_name": previous_release_name,
             "workdir": str(workdir),
         }
+        if curriculum_template is not None and initial_curriculum_version is not None:
+            curriculum_version = initial_curriculum_version + candidate - first_candidate
+            curriculum_name = _render(curriculum_template, {
+                "candidate": candidate,
+                "curriculum_version": curriculum_version,
+            })
+            context.update({
+                "curriculum_version": curriculum_version,
+                "curriculum_name": curriculum_name,
+                "next_curriculum_version": curriculum_version + 1,
+                "next_curriculum_name": _render(curriculum_template, {
+                    "candidate": candidate + 1,
+                    "curriculum_version": curriculum_version + 1,
+                }),
+            })
         for raw_path in prepare_directories:
             directory = Path(_render(raw_path, context))
             if not directory.is_absolute():
@@ -457,10 +485,19 @@ def run_loop(
             result = {"perfect": False, "reason": "candidate_cap_reached", "candidate": candidate, "scores": scores}
             _write_json(state_path, {"phase": "candidate_cap_reached", **result})
             return result
+        repair_context = context
+        if repair_commands:
+            scores_path = output_dir / f"candidate-{candidate:03d}-scores.json"
+            _write_json(scores_path, {
+                "candidate": candidate,
+                "release_name": release_name,
+                "scores": scores,
+            })
+            repair_context = {**context, "run_dir": str(output_dir), "scores_path": str(scores_path)}
         for index, raw_command in enumerate(repair_commands, start=1):
             if not isinstance(raw_command, list):
                 raise ValueError("each repair command must be a command array")
-            command = [_render(str(part), context) for part in raw_command]
+            command = [_render(str(part), repair_context) for part in raw_command]
             log_path = output_dir / f"candidate-{candidate:03d}-repair-{index}.log"
             _write_json(state_path, {"phase": "repair_running", "candidate": candidate, "stage": f"repair-{index}", "log_path": str(log_path)})
             returncode = command_runner(command, workdir, log_path)

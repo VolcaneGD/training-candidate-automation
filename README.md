@@ -20,6 +20,28 @@ Copy [examples/score-gated-local.json](examples/score-gated-local.json) and repl
 
 `max_candidates` is mandatory. Each stage uses an argument array, never a shell command string. A score report must contain integer `passed` and `cases` values; dotted keys such as `summary.passed` are supported.
 
+To strengthen a curriculum after each valid miss instead of repeating the same
+dataset, configure a versioned template. Each `repair_commands` entry receives
+the current and next curriculum names plus a JSON score summary.
+
+```json
+{
+  "curriculum_template": "datasets/executor-repair.v{curriculum_version}.jsonl",
+  "initial_curriculum_version": 13,
+  "repair_commands": [[
+    "python", "build_repair_curriculum.py",
+    "--scores-path", "{scores_path}",
+    "--curriculum-version", "{next_curriculum_version}",
+    "--output", "{next_curriculum_name}"
+  ]]
+}
+```
+
+The runner exposes `{curriculum_version}`, `{curriculum_name}`,
+`{next_curriculum_version}`, `{next_curriculum_name}`, and `{scores_path}`.
+Malformed reports and protected-score regressions stop before a repair command
+can run, so an invalid measurement never becomes training data.
+
 ```powershell
 python candidate_loop.py --config C:\runs\candidate-config.json --run-dir C:\runs\candidate-automation
 ```
