@@ -65,6 +65,18 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIsNone(training_monitor.recovery_request_key(state))
         self.assertIn("ACTION REQUIRED", training_monitor.completion_log_summary(state))
 
+    def test_stop_report_contains_copy_ready_failure_details(self) -> None:
+        report = training_monitor.stop_report_text({
+            "phase": "failed", "reason": "stage_failed", "candidate": 9,
+            "stage": "download_merged", "log_path": r"D:\\run\\stage.log",
+            "scores": [{"path": r"D:\\scores\\fixed.json", "passed": 7, "cases": 8}],
+        })
+        self.assertIn("Candidate: 9", report)
+        self.assertIn("Reason: stage_failed", report)
+        self.assertIn("Stage: download_merged", report)
+        self.assertIn(r"D:\\run\\stage.log", report)
+        self.assertIn("fixed: 7/8", report)
+
     def test_dead_process_overrides_stale_running_phase(self) -> None:
         self.assertEqual(
             training_monitor.dashboard_status_badge("stage_running", "completed"),

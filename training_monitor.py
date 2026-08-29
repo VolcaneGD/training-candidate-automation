@@ -242,6 +242,42 @@ def completion_summary_color(state: object) -> str | None:
     return None
 
 
+def copy_report_button_text(language: str, *, copied: bool = False) -> str:
+    if language == "ja":
+        return "コピーしました" if copied else "伝達事項をコピー"
+    return "Copied" if copied else "Copy report"
+
+
+def stop_report_text(state: dict[str, object]) -> str:
+    """Build a concise report that can be pasted directly into the Codex chat."""
+    candidate = state.get("candidate", "-")
+    reason = str(state.get("reason") or state.get("phase") or "unknown")
+    stage = str(state.get("stage") or "-")
+    lines = [
+        "Training Monitor STOPPED report",
+        "Please inspect this report and resume the fine-tuning sequence.",
+        f"Candidate: {candidate}",
+        f"Reason: {reason}",
+        f"Stage: {stage}",
+    ]
+    log_path = state.get("log_path")
+    if isinstance(log_path, str) and log_path:
+        lines.append(f"Log: {log_path}")
+    scores = state.get("scores")
+    if isinstance(scores, list):
+        score_lines: list[str] = []
+        for score in scores:
+            if not isinstance(score, dict):
+                continue
+            label = Path(str(score.get("path") or "score")).stem.rsplit(".", 1)[-1] or "score"
+            passed, cases = score.get("passed"), score.get("cases")
+            if isinstance(passed, int) and isinstance(cases, int):
+                score_lines.append(f"- {label}: {passed}/{cases}")
+        if score_lines:
+            lines.extend(["Scores:", *score_lines])
+    return "\n".join(lines)
+
+
 def dashboard_activity_label(elapsed_seconds: int, refresh_tick: int, *, is_running: bool = True) -> str:
     """Provide a visible heartbeat while a long stage is making no new log line."""
     if not is_running:
@@ -556,6 +592,7 @@ class TrainingMonitorApp:
         self.notified: set[str] = set()
         self.recovery_requests: dict[str, tuple[float, bool, int]] = {}
         self.close_scheduled = False
+        self.last_stop_report = ""
         self.state_value = tk.StringVar(value="CONNECTING")
         self.phase_value = tk.StringVar(value="Loading monitor")
         self.metrics = {
@@ -621,11 +658,17 @@ class TrainingMonitorApp:
         ttk.Button(actions, text="Refresh now", style="Monitor.TButton", command=self.refresh).pack(side="right")
         self.language_button = ttk.Button(actions, text=dashboard_text(self.language, "language"), style="Monitor.TButton", command=self._toggle_language)
         self.language_button.pack(side="left")
+        self.copy_button = ttk.Button(
+            actions, text=copy_report_button_text(self.language), style="Monitor.TButton",
+            command=self._copy_stop_report, state="disabled",
+        )
+        self.copy_button.pack(side="left", padx=(8, 0))
 
     def _toggle_language(self) -> None:
         self.language = "ja" if self.language == "en" else "en"
         self.log_label.configure(text=dashboard_text(self.language, "live_log"))
         self.language_button.configure(text=dashboard_text(self.language, "language"))
+        self.copy_button.configure(text=copy_report_button_text(self.language))
         for key, label in self.metric_labels.items():
             label.configure(text=dashboard_text(self.language, key), **dashboard_metric_label_options(key, self.language))
         for key, label in self.metric_value_labels.items():
@@ -633,6 +676,14 @@ class TrainingMonitorApp:
         self.log_label.configure(font=(dashboard_font(self.language), 9))
         self.log.configure(font=(dashboard_font(self.language) if self.language == "ja" else "Cascadia Mono", 10 if self.language == "ja" else 9))
         self.refresh()
+
+    def _copy_stop_report(self) -> None:
+        if not self.last_stop_report:
+            return
+        self.tk.clipboard_clear()
+        self.tk.clipboard_append(self.last_stop_report)
+        self.tk.update()
+        self.copy_button.configure(text=copy_report_button_text(self.language, copied=True))
 
     def _animate_badge(self) -> None:
         if self.badge_pulsing:
@@ -697,6 +748,15 @@ class TrainingMonitorApp:
         self.state_value.set(badge_text)
         self.badge_color = badge_color
         self.badge_pulsing = badge_pulsing
+        stopped = badge_text == "STOPPED"
+        report_state = dict(snapshot["automation_state"])
+        if snapshot["liveness_reason"]:
+            report_state["reason"] = snapshot["liveness_reason"]
+        self.last_stop_report = stop_report_text(report_state) if stopped else ""
+        self.copy_button.configure(
+            state="normal" if self.last_stop_report else "disabled",
+            text=copy_report_button_text(self.language),
+        )
         if not badge_pulsing:
             self.badge_lit = False
             self.state_badge.configure(foreground=badge_color, background=self.theme["surface_muted"])
