@@ -22,6 +22,13 @@ Notifier = Callable[[str, str], None]
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
     if path.name == "monitor_state.json":
+        if "run_started_at" not in value and path.is_file():
+            try:
+                previous = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(previous.get("run_started_at"), (int, float)):
+                    value = {**value, "run_started_at": previous["run_started_at"]}
+            except (OSError, json.JSONDecodeError, AttributeError):
+                pass
         value = {**value, "loop_process_id": os.getpid()}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -201,7 +208,7 @@ def run_loop(
             if not directory.is_absolute():
                 directory = workdir / directory
             directory.mkdir(parents=True, exist_ok=True)
-        _write_json(state_path, {"phase": "candidate_started", "candidate": candidate, "release_name": release_name})
+        _write_json(state_path, {"phase": "candidate_started", "candidate": candidate, "release_name": release_name, "run_started_at": time.time()})
         for raw_stage in stages:
             if not isinstance(raw_stage, dict) or not isinstance(raw_stage.get("name"), str) or not isinstance(raw_stage.get("command"), list):
                 raise ValueError("each stage needs a name and command array")

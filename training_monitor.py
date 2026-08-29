@@ -261,6 +261,14 @@ def stage_elapsed_seconds(state: dict[str, object], *, now: float | None = None)
     return elapsed if isinstance(elapsed, int) and elapsed >= 0 else 0
 
 
+def run_elapsed_seconds(state: dict[str, object], *, now: float | None = None) -> int:
+    """Return cumulative candidate-run time independently of the current stage."""
+    started_at = state.get("run_started_at")
+    if not isinstance(started_at, (int, float)):
+        return 0
+    return int(max(0, (time.time() if now is None else now) - started_at))
+
+
 def dashboard_stage_elapsed_value(snapshot: dict[str, object]) -> str:
     elapsed = snapshot.get("stage_elapsed_seconds", 0)
     seconds = elapsed if isinstance(elapsed, int) and elapsed >= 0 else 0
@@ -399,6 +407,17 @@ def automation_state(path: Path | None) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
+def run_started_at_from_events(path: Path) -> float | None:
+    """Recover a candidate start timestamp from the first durable stage event."""
+    try:
+        with path.open(encoding="utf-8") as events:
+            first_event = json.loads(events.readline())
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = first_event.get("stage_started_at") if isinstance(first_event, dict) else None
+    return float(value) if isinstance(value, (int, float)) else None
+
+
 def active_stage_failure_reason(
     state: dict[str, object], process_exists: Callable[[int], bool], *, now: float | None = None,
 ) -> str | None:
@@ -427,6 +446,10 @@ def build_snapshot(
 ) -> dict[str, object]:
     artifact_files, artifact_bytes = directory_stats(watch_path)
     loop_state = automation_state(state_path)
+    if state_path is not None and not isinstance(loop_state.get("run_started_at"), (int, float)):
+        recovered_start = run_started_at_from_events(state_path.parent / "automation_events.jsonl")
+        if recovered_start is not None:
+            loop_state = {**loop_state, "run_started_at": recovered_start}
     liveness_reason = active_stage_failure_reason(loop_state, process_exists)
     tracked_process_id = process_id
     loop_process_id = loop_state.get("loop_process_id")
@@ -468,6 +491,7 @@ def build_snapshot(
         "automation_state": loop_state,
         "liveness_reason": liveness_reason,
         "stage_elapsed_seconds": stage_elapsed_seconds(loop_state),
+        "run_elapsed_seconds": run_elapsed_seconds(loop_state),
     }
 
 
@@ -649,6 +673,8 @@ class TrainingMonitorApp:
             )
         elapsed_value = snapshot["stage_elapsed_seconds"]
         elapsed = elapsed_value if isinstance(elapsed_value, int) and elapsed_value >= 0 else 0
+        run_elapsed_value = snapshot["run_elapsed_seconds"]
+        run_elapsed = run_elapsed_value if isinstance(run_elapsed_value, int) and run_elapsed_value >= 0 else 0
         stage_running = snapshot["automation_phase"] in {"stage_running", "repair_running", "stage_retry_wait"}
         request_started_at, request_accepted, recovery_attempts = (
             self.recovery_requests.get(recovery_key, (None, False, 0)) if recovery_key else (None, False, 0)
@@ -668,7 +694,7 @@ class TrainingMonitorApp:
         self.phase_value.set(
             f"{dashboard_phase_label(snapshot['automation_phase'])}  •  "
             f"Local {snapshot['local_state']}  •  Modal {snapshot['modal_state']}  •  "
-            f"{dashboard_activity_label(elapsed, self.refresh_tick, is_running=stage_running)}"
+            f"{dashboard_activity_label(run_elapsed, self.refresh_tick, is_running=stage_running)}"
         )
         self.metrics["candidate"].set(str(snapshot["automation_candidate"]))
         self.metrics["stage"].set(dashboard_stage_label(snapshot["automation_stage"], self.language))

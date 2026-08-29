@@ -41,6 +41,18 @@ class PublicPackageTests(unittest.TestCase):
             {"phase": "stage_retry_wait", "retry_started_at": 100.0}, now=107.0,
         ), 7)
 
+    def test_monitoring_elapsed_uses_the_candidate_run_start(self) -> None:
+        self.assertEqual(
+            training_monitor.run_elapsed_seconds({"run_started_at": 100.0}, now=167.0),
+            67,
+        )
+
+    def test_existing_event_log_supplies_a_legacy_run_start(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            event_path = Path(temp_dir) / "automation_events.jsonl"
+            event_path.write_text(json.dumps({"stage_started_at": 123.0}) + "\n", encoding="utf-8")
+            self.assertEqual(training_monitor.run_started_at_from_events(event_path), 123.0)
+
     def test_exhausted_stage_retry_is_stopped_with_action_guidance(self) -> None:
         state = {"phase": "failed", "reason": "stage_failed", "candidate": 9, "stage": "download"}
         self.assertEqual(training_monitor.dashboard_status_badge("failed", "completed")[0], "STOPPED")
