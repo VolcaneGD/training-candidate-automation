@@ -88,6 +88,17 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIn("ACTION REQUIRED", summary)
         self.assertIn("regression", summary.lower())
 
+    def test_regression_stop_summary_lists_score_results(self) -> None:
+        summary = training_monitor.completion_log_summary({
+            "phase": "failed", "reason": "regression_detected", "candidate": 46,
+            "scores": [
+                {"path": "scores/release.fixed.json", "passed": 2, "cases": 8},
+                {"path": "scores/release.multitool.json", "passed": 0, "cases": 6},
+            ],
+        })
+        self.assertIn("fixed: 2/8", summary)
+        self.assertIn("multitool: 0/6", summary)
+
     def test_regression_gate_is_stopped_not_retried_when_recovery_task_is_configured(self) -> None:
         state = {"phase": "failed", "reason": "regression_detected", "candidate": 10}
         self.assertIsNone(training_monitor.recovery_request_key(state))

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 from typing import Callable
 
@@ -232,7 +233,21 @@ def completion_log_summary(state: dict[str, object], language: str = "en") -> st
     if phase in {"failed", "candidate_cap_reached"}:
         reason = str(state.get("reason") or phase)
         stage = str(state.get("stage") or "-")
-        summary = f"STOPPED — Candidate {candidate}\nreason: {reason}\nstage: {stage}"
+        lines = [f"STOPPED — Candidate {candidate}", f"reason: {reason}", f"stage: {stage}"]
+        scores = state.get("scores", [])
+        if isinstance(scores, list):
+            score_lines: list[str] = []
+            for score in scores:
+                if not isinstance(score, dict):
+                    continue
+                path = Path(str(score.get("path") or ""))
+                label = path.stem.rsplit(".", 1)[-1] or "score"
+                passed, cases = score.get("passed"), score.get("cases")
+                if isinstance(passed, int) and isinstance(cases, int):
+                    score_lines.append(f"- {label}: {passed}/{cases}")
+            if score_lines:
+                lines.extend(["", "Scores:", *score_lines])
+        summary = "\n".join(lines)
         if reason in {"candidate_cap_reached", "cap_recovery_failed"}:
             summary += "\n\n" + safety_cap_guidance(language)
         elif reason == "stage_failed":
@@ -734,6 +749,41 @@ class TrainingMonitorApp:
         self.tk.title(self.args.title)
 
     def refresh(self) -> None:
+        """Keep the monitor alive and preserve a copyable STOPPED report on render errors."""
+        try:
+            self._refresh_once()
+        except Exception as error:  # Tk otherwise drops the next scheduled refresh callback.
+            rendered_state = getattr(self, "last_rendered_automation_state", {})
+            if not isinstance(rendered_state, dict):
+                rendered_state = {}
+            terminal_summary = completion_log_summary(rendered_state, self.language)
+            if not terminal_summary:
+                terminal_summary = f"STOPPED — Monitor rendering error\nreason: {type(error).__name__}"
+            self.last_stop_report = stop_report_text(rendered_state) if rendered_state else (
+                "```text\nTraining Monitor STOPPED report\n"
+                "Please inspect this report and resume the fine-tuning sequence.\n"
+                f"Reason: monitor_render_error ({type(error).__name__})\n```"
+            )
+            temporary = self.heartbeat_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps({
+                "rendered_at": time.time(), "process_id": os.getpid(),
+                "refresh_error": repr(error), "refresh_traceback": traceback.format_exc(),
+            }), encoding="utf-8")
+            temporary.replace(self.heartbeat_path)
+            self.state_value.set("STOPPED")
+            self.badge_color = "#fb7185"
+            self.badge_pulsing = False
+            self.state_badge.configure(foreground=self.badge_color, background=self.theme["surface_muted"])
+            self.phase_value.set(f"Monitor error: {type(error).__name__}; action required")
+            self.copy_button.configure(state="normal", text=copy_report_button_text(self.language))
+            self.log.configure(state="normal")
+            self.log.delete("1.0", "end")
+            self.log.insert("1.0", terminal_summary, "terminal-stopped")
+            self.log.insert("end", f"\n\nMonitor rendering error: {type(error).__name__}; retrying display refresh.")
+            self.log.configure(state="disabled")
+            self.tk.after(max(1000, self.args.refresh_seconds * 1000), self.refresh)
+
+    def _refresh_once(self) -> None:
         refresh_started_at = time.monotonic()
         self._reload_runtime_settings()
         snapshot = build_snapshot(
@@ -743,6 +793,7 @@ class TrainingMonitorApp:
             modal_app=self.args.modal_app,
             state_path=self.args.state_path,
         )
+        self.last_rendered_automation_state = dict(snapshot["automation_state"])
         state = str(snapshot["overall_state"])
         recovery_key = recovery_request_key(snapshot["automation_state"])
         now = time.monotonic()
