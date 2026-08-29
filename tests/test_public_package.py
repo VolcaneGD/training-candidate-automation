@@ -59,6 +59,19 @@ class PublicPackageTests(unittest.TestCase):
             getattr(training_monitor.subprocess, "CREATE_NO_WINDOW", 0),
         )
 
+    def test_windows_process_probe_treats_missing_tasklist_stdout_as_not_running(self) -> None:
+        completed = mock.Mock(stdout=None)
+        with mock.patch.object(training_monitor.subprocess, "run", return_value=completed):
+            self.assertFalse(training_monitor.process_exists(42))
+
+    def test_monitor_render_error_report_never_uses_running_phase_as_reason(self) -> None:
+        report = training_monitor.stop_report_text(training_monitor.monitor_error_report_state(
+            {"phase": "stage_running", "candidate": 48, "stage": "runtime_eval"},
+            TypeError("tasklist stdout missing"),
+        ))
+        self.assertIn("Reason: monitor_render_error:TypeError", report)
+        self.assertNotIn("Reason: stage_running", report)
+
     def test_refresh_delay_compensates_for_snapshot_work(self) -> None:
         self.assertEqual(
             training_monitor.next_refresh_delay_ms(1, refresh_started_at=100.0, now=100.25),

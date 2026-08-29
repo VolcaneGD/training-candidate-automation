@@ -307,6 +307,14 @@ def stop_report_text(state: dict[str, object]) -> str:
     return "```text\n" + "\n".join(lines) + "\n```"
 
 
+def monitor_error_report_state(state: object, error: Exception) -> dict[str, object]:
+    """Convert a renderer exception into an honest, copyable STOPPED reason."""
+    report_state = dict(state) if isinstance(state, dict) else {}
+    report_state["phase"] = "failed"
+    report_state["reason"] = f"monitor_render_error:{type(error).__name__}"
+    return report_state
+
+
 def dashboard_activity_label(elapsed_seconds: int, refresh_tick: int, *, is_running: bool = True) -> str:
     """Provide a visible heartbeat while a long stage is making no new log line."""
     if not is_running:
@@ -472,7 +480,7 @@ def process_exists(process_id: int) -> bool:
             check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        return str(process_id) in result.stdout
+        return str(process_id) in (result.stdout or "")
     return Path(f"/proc/{process_id}").exists()
 
 
@@ -778,17 +786,13 @@ class TrainingMonitorApp:
         try:
             self._refresh_once()
         except Exception as error:  # Tk otherwise drops the next scheduled refresh callback.
-            rendered_state = getattr(self, "last_rendered_automation_state", {})
-            if not isinstance(rendered_state, dict):
-                rendered_state = {}
+            rendered_state = monitor_error_report_state(
+                getattr(self, "last_rendered_automation_state", {}), error,
+            )
             terminal_summary = completion_log_summary(rendered_state, self.language)
             if not terminal_summary:
                 terminal_summary = f"STOPPED — Monitor rendering error\nreason: {type(error).__name__}"
-            self.last_stop_report = stop_report_text(rendered_state) if rendered_state else (
-                "```text\nTraining Monitor STOPPED report\n"
-                "Please inspect this report and resume the fine-tuning sequence.\n"
-                f"Reason: monitor_render_error ({type(error).__name__})\n```"
-            )
+            self.last_stop_report = stop_report_text(rendered_state)
             temporary = self.heartbeat_path.with_suffix(".tmp")
             temporary.write_text(json.dumps({
                 "rendered_at": time.time(), "process_id": os.getpid(),
