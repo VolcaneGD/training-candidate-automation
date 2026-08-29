@@ -49,6 +49,16 @@ class PublicPackageTests(unittest.TestCase):
             67,
         )
 
+    def test_windows_process_probe_never_opens_tasklist_console(self) -> None:
+        completed = mock.Mock(stdout="python.exe                    42 Console")
+        with mock.patch.object(training_monitor.subprocess, "run", return_value=completed) as run:
+            self.assertTrue(training_monitor.process_exists(42))
+
+        self.assertEqual(
+            run.call_args.kwargs["creationflags"],
+            getattr(training_monitor.subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
     def test_refresh_delay_compensates_for_snapshot_work(self) -> None:
         self.assertEqual(
             training_monitor.next_refresh_delay_ms(1, refresh_started_at=100.0, now=100.25),

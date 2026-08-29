@@ -430,6 +430,7 @@ def process_exists(process_id: int) -> bool:
             text=True,
             capture_output=True,
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         return str(process_id) in result.stdout
     return Path(f"/proc/{process_id}").exists()
