@@ -76,6 +76,17 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIn("ACTION REQUIRED", summary)
         self.assertIn("regression", summary.lower())
 
+    def test_regression_gate_is_stopped_not_retried_when_recovery_task_is_configured(self) -> None:
+        state = {"phase": "failed", "reason": "regression_detected", "candidate": 10}
+        self.assertIsNone(training_monitor.recovery_request_key(state))
+        self.assertEqual(
+            training_monitor.recovery_status_badge(
+                "failed", "failed", reason="regression_detected",
+                recovery_task="Example", request_started_at=0.0, request_accepted=True,
+            ),
+            ("STOPPED", "#fb7185", False),
+        )
+
     def test_stop_report_contains_copy_ready_failure_details(self) -> None:
         report = training_monitor.stop_report_text({
             "phase": "failed", "reason": "stage_failed", "candidate": 9,

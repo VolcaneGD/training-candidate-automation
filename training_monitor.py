@@ -148,7 +148,7 @@ def recovery_request_key(automation_state: object) -> str | None:
     phase = str(automation_state.get("phase") or "")
     reason = str(automation_state.get("reason") or "")
     if phase == "candidate_cap_reached" or reason in {
-        "candidate_cap_reached", "cap_recovery_failed", "stage_failed",
+        "candidate_cap_reached", "cap_recovery_failed", "stage_failed", "regression_detected",
     }:
         return None
     if phase not in {"failed", "candidate_cap_reached"}:
@@ -161,6 +161,7 @@ def recovery_status_badge(
     phase: object,
     overall_state: object,
     *,
+    reason: object = None,
     recovery_task: str | None,
     request_started_at: float | None,
     request_accepted: bool,
@@ -168,7 +169,7 @@ def recovery_status_badge(
 ) -> tuple[str, str, bool]:
     """Show RETRYING only while a configured recovery launch awaits confirmation."""
     fallback = dashboard_status_badge(phase, overall_state)
-    if recovery_request_key({"phase": phase}) is None or not recovery_task:
+    if recovery_request_key({"phase": phase, "reason": reason}) is None or not recovery_task:
         return fallback
     if request_started_at is None:
         return fallback
@@ -764,6 +765,7 @@ class TrainingMonitorApp:
         )
         badge_text, badge_color, badge_pulsing = recovery_status_badge(
             snapshot["automation_phase"], state,
+            reason=snapshot["automation_state"].get("reason"),
             recovery_task=self.args.recovery_task,
             request_started_at=request_started_at,
             request_accepted=request_accepted,
