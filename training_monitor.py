@@ -20,6 +20,7 @@ RUNTIME_SETTING_NAMES = (
     "state_path", "refresh_seconds", "notify", "recovery_task",
 )
 RECOVERY_CONFIRMATION_SECONDS = 30
+HEARTBEAT_STALE_SECONDS = 45
 
 TEXT = {
     "en": {"live_log": "LIVE LOG", "language": "日本語", "action": "ACTION REQUIRED — Candidate safety cap reached. Report this screen to Codex to inspect the score, improve the curriculum, set a new positive cap, and resume a bounded run."},
@@ -365,6 +366,22 @@ def automation_state(path: Path | None) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
+def active_stage_failure_reason(
+    state: dict[str, object], process_exists: Callable[[int], bool], *, now: float | None = None,
+) -> str | None:
+    """Detect a dead command or stale loop heartbeat while an active phase is displayed."""
+    if state.get("phase") not in {"stage_running", "repair_running"}:
+        return None
+    process_id = state.get("command_process_id")
+    if isinstance(process_id, int) and process_id > 0 and not process_exists(process_id):
+        return "stage_process_exited"
+    heartbeat_at = state.get("heartbeat_at")
+    current_time = time.time() if now is None else now
+    if isinstance(heartbeat_at, (int, float)) and current_time - heartbeat_at > HEARTBEAT_STALE_SECONDS:
+        return "stage_heartbeat_stale"
+    return None
+
+
 def build_snapshot(
     *,
     watch_path: Path | None,
@@ -377,11 +394,15 @@ def build_snapshot(
 ) -> dict[str, object]:
     artifact_files, artifact_bytes = directory_stats(watch_path)
     loop_state = automation_state(state_path)
+    liveness_reason = active_stage_failure_reason(loop_state, process_exists)
     tracked_process_id = process_id
     loop_process_id = loop_state.get("loop_process_id")
     if isinstance(loop_process_id, int) and loop_process_id > 0 and process_exists(loop_process_id):
         tracked_process_id = loop_process_id
-    local_state = "not tracked" if tracked_process_id is None else ("running" if process_exists(tracked_process_id) else "completed")
+    if liveness_reason:
+        local_state = "failed"
+    else:
+        local_state = "not tracked" if tracked_process_id is None else ("running" if process_exists(tracked_process_id) else "completed")
     active_log_path = log_path
     stage_log_value = loop_state.get("log_path")
     if local_state != "completed" and isinstance(stage_log_value, str) and stage_log_value:
@@ -412,6 +433,7 @@ def build_snapshot(
         "automation_candidate": loop_state.get("candidate", "-"),
         "automation_stage": loop_state.get("stage", "-"),
         "automation_state": loop_state,
+        "liveness_reason": liveness_reason,
         "stage_elapsed_seconds": stage_elapsed_seconds(loop_state),
     }
 

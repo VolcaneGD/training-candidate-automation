@@ -40,11 +40,22 @@ def _render(value: str, context: dict[str, object]) -> str:
         raise ValueError(f"unknown template field: {error.args[0]}") from error
 
 
-def _command_runner(command: list[str], workdir: Path, log_path: Path) -> int:
+def _command_runner(
+    command: list[str], workdir: Path, log_path: Path,
+    *, on_started: Callable[[int], None] | None = None,
+    on_heartbeat: Callable[[], None] | None = None,
+) -> int:
     with log_path.open("w", encoding="utf-8") as log:
         log.write("$ " + subprocess.list2cmdline(command) + "\n\n")
         log.flush()
-        return subprocess.run(command, cwd=workdir, stdout=log, stderr=subprocess.STDOUT, check=False).returncode
+        process = subprocess.Popen(command, cwd=workdir, stdout=log, stderr=subprocess.STDOUT)
+        if on_started:
+            on_started(process.pid)
+        while process.poll() is None:
+            if on_heartbeat:
+                on_heartbeat()
+            time.sleep(1)
+        return int(process.returncode)
 
 
 def _dotted_value(payload: object, key: str) -> object:
@@ -234,8 +245,25 @@ def run_loop(
                 log_path = output_dir / f"candidate-{candidate:03d}-{name}{log_suffix}.log"
                 stage_started_at = time.time()
                 stage_started_monotonic = time.monotonic()
-                _write_json(state_path, {"phase": "stage_running", "candidate": candidate, "release_name": release_name, "stage": name, "attempt": attempt, "log_path": str(log_path), "stage_started_at": stage_started_at})
-                returncode = command_runner(command, workdir, log_path)
+                stage_state = {"phase": "stage_running", "candidate": candidate, "release_name": release_name, "stage": name, "attempt": attempt, "log_path": str(log_path), "stage_started_at": stage_started_at}
+                _write_json(state_path, stage_state)
+                if command_runner is _command_runner:
+                    stage_process_id: int | None = None
+                    def update_liveness(process_id: int | None = None) -> None:
+                        nonlocal stage_process_id
+                        if process_id is not None:
+                            stage_process_id = process_id
+                        update = {**stage_state, "heartbeat_at": time.time()}
+                        if stage_process_id is not None:
+                            update["command_process_id"] = stage_process_id
+                        _write_json(state_path, update)
+                    returncode = _command_runner(
+                        command, workdir, log_path,
+                        on_started=lambda process_id: update_liveness(process_id),
+                        on_heartbeat=update_liveness,
+                    )
+                else:
+                    returncode = command_runner(command, workdir, log_path)
                 stage_elapsed_seconds = int(max(0, time.monotonic() - stage_started_monotonic))
                 if returncode == 0 or allow_nonzero:
                     break

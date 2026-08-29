@@ -38,6 +38,20 @@ class PublicPackageTests(unittest.TestCase):
             ("STOPPED", "#fb7185", False),
         )
 
+    def test_dead_stage_process_marks_active_state_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "monitor_state.json"
+            state_path.write_text(json.dumps({
+                "phase": "stage_running", "loop_process_id": 10,
+                "command_process_id": 11, "heartbeat_at": 100.0,
+            }), encoding="utf-8")
+            snapshot = training_monitor.build_snapshot(
+                watch_path=None, log_path=None, process_id=10, modal_app=None,
+                state_path=state_path, process_exists=lambda pid: pid == 10,
+            )
+        self.assertEqual(snapshot["overall_state"], "failed")
+        self.assertEqual(snapshot["liveness_reason"], "stage_process_exited")
+
     def test_score_gated_run_completes_with_a_generic_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
