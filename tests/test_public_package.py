@@ -341,6 +341,21 @@ class PublicPackageTests(unittest.TestCase):
             ["repair", "curriculum.v12.jsonl", "curriculum.v13.jsonl", str(root / "run" / "candidate-004-scores.json"), "13"],
         )
 
+    def test_experiment_ledger_records_curriculum_adapter_and_preference_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "experiments.jsonl"
+            candidate_loop.append_experiment_ledger(path, {
+                "candidate": 13, "release_name": "executor-v13", "curriculum_version": 13,
+                "curriculum_name": "executor.v13.jsonl", "resume_adapter_name": "executor-v12",
+                "training_mode": "dpo", "scores": [{"passed": 8, "cases": 8}],
+            })
+            row = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual(row["candidate"], 13)
+        self.assertEqual(row["curriculum"]["version"], 13)
+        self.assertEqual(row["adapter"]["resume"], "executor-v12")
+        self.assertEqual(row["training_mode"], "dpo")
+
     def test_monitor_launcher_forwards_an_explicit_recovery_task(self) -> None:
         launcher = ROOT / "scripts" / "launch_training_monitor.ps1"
         result = subprocess.run(

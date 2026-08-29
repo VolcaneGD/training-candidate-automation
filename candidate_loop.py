@@ -40,6 +40,20 @@ def _append_event(path: Path, value: dict[str, Any]) -> None:
         events.write(json.dumps(value, ensure_ascii=False) + "\n")
 
 
+def append_experiment_ledger(path: Path, value: dict[str, object]) -> None:
+    """Persist one comparable candidate summary without copying raw prompts."""
+    row = {
+        "schema_version": "training-candidate-automation/experiment-ledger/v1",
+        "candidate": value.get("candidate"),
+        "release_name": value.get("release_name"),
+        "curriculum": {"version": value.get("curriculum_version"), "name": value.get("curriculum_name")},
+        "adapter": {"resume": value.get("resume_adapter_name"), "composition": value.get("adapter_composition", "resume")},
+        "training_mode": value.get("training_mode", "sft"),
+        "scores": value.get("scores", []),
+    }
+    _append_event(path, row)
+
+
 def _render(value: str, context: dict[str, object]) -> str:
     try:
         return value.format(**context)
@@ -257,6 +271,18 @@ def run_loop(
         raise ValueError("prepare_directories must be a list of paths")
     cap_recovery = _cap_recovery(config)
     regression_guards = _regression_guards(config)
+    ledger_value = config.get("experiment_ledger_path", "experiment_ledger.jsonl")
+    if not isinstance(ledger_value, str) or not ledger_value:
+        raise ValueError("experiment_ledger_path must be a non-empty path string")
+    ledger_path = Path(ledger_value)
+    if not ledger_path.is_absolute():
+        ledger_path = output_dir / ledger_path
+    training_mode = config.get("training_mode", "sft")
+    if training_mode not in {"sft", "dpo"}:
+        raise ValueError("training_mode must be sft or dpo")
+    adapter_composition = config.get("adapter_composition", "resume")
+    if not isinstance(adapter_composition, str) or not adapter_composition:
+        raise ValueError("adapter_composition must be a non-empty string")
     curriculum_template, initial_curriculum_version = _curriculum_settings(config)
 
     previous_release_name = initial_resume_adapter
@@ -403,6 +429,7 @@ def run_loop(
             _write_json(state_path, {"phase": "failed", **result})
             return result
         regressions = regression_violations(regression_guards, context, workdir, scores)
+        append_experiment_ledger(ledger_path, {**context, "scores": scores, "training_mode": training_mode, "adapter_composition": adapter_composition})
         if regressions:
             result = {"perfect": False, "reason": "regression_detected", "candidate": candidate, "release_name": release_name, "scores": scores, "regressions": regressions}
             _write_json(state_path, {"phase": "failed", **result})

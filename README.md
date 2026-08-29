@@ -42,6 +42,14 @@ The runner exposes `{curriculum_version}`, `{curriculum_name}`,
 Malformed reports and protected-score regressions stop before a repair command
 can run, so an invalid measurement never becomes training data.
 
+Every scored candidate is also appended to `experiment_ledger.jsonl` in the
+run directory. Set `experiment_ledger_path` to move it. Ledger rows retain the
+candidate, curriculum version, resumed/combined adapter identifier, training
+mode (`sft` or `dpo`), and score summaries, but never copy prompts or training
+records. Use `adapter_composition` to label a PEFT weighted-adapter experiment;
+the actual merge remains an explicit stage command and is evaluated by the same
+score and regression gates.
+
 ```powershell
 python candidate_loop.py --config C:\runs\candidate-config.json --run-dir C:\runs\candidate-automation
 ```
