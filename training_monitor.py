@@ -620,19 +620,38 @@ def format_bytes(value: int) -> str:
     return f"{value:.1f} TiB"
 
 
+def notification_helper_path() -> Path:
+    return Path.home() / ".codex" / "skills" / "notify-user-on-completion" / "scripts" / "notify_done.py"
+
+
+def play_notification_chime() -> None:
+    """Play immediately in the monitor process; the popup is only a second channel."""
+    try:
+        import winsound
+
+        winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+        winsound.Beep(880, 180)
+        winsound.Beep(1175, 220)
+    except (ImportError, RuntimeError):
+        pass
+
+
 def send_notification(title: str, message: str) -> None:
     if os.name != "nt":
         return
-    # The shared completion helper uses a visible WScript popup plus sound.  A
-    # popup is deliberately used here because unregistered WinRT toast calls can
-    # succeed without ever appearing in the user's notification center.
-    helper = Path.home() / ".codex" / "skills" / "notify-user-on-completion" / "scripts" / "notify_done.py"
+    play_notification_chime()
+    # The shared completion helper uses a visible WScript popup.  Do not start
+    # it with pythonw: a console Python child reliably preserves the interactive
+    # desktop notification/audio context while CREATE_NO_WINDOW hides any shell.
+    helper = notification_helper_path()
     if not helper.is_file():
         return
+    console_python = Path(sys.executable).with_name("python.exe")
+    executable = str(console_python if console_python.is_file() else Path(sys.executable))
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         subprocess.Popen(
-            [sys.executable, str(helper), "--title", title, "--message", message],
+            [executable, str(helper), "--title", title, "--message", message],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=creationflags,

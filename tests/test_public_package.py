@@ -18,6 +18,22 @@ import training_monitor
 
 
 class PublicPackageTests(unittest.TestCase):
+    def test_notification_uses_console_python_and_plays_an_immediate_chime(self) -> None:
+        helper = Path("C:/notification/notify_done.py")
+        with (
+            mock.patch.object(training_monitor.os, "name", "nt"),
+            mock.patch.object(training_monitor, "notification_helper_path", return_value=helper),
+            mock.patch.object(training_monitor, "play_notification_chime") as chime,
+            mock.patch.object(Path, "is_file", return_value=True),
+            mock.patch.object(training_monitor.subprocess, "Popen") as popen,
+        ):
+            training_monitor.send_notification("Stopped", "Candidate 50 failed")
+
+        chime.assert_called_once()
+        command = popen.call_args.args[0]
+        self.assertEqual(Path(command[0]).name.lower(), "python.exe")
+        self.assertEqual(command[1], str(helper))
+
     def test_dashboard_locale_provides_japanese_action_guidance(self) -> None:
         self.assertEqual(training_monitor.dashboard_text("ja", "live_log"), "ライブログ")
         self.assertIn("Codex", training_monitor.safety_cap_guidance("ja"))
