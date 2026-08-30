@@ -485,6 +485,12 @@ class PublicPackageTests(unittest.TestCase):
         self.assertIn("Get-CimInstance Win32_Process", monitor_source)
         self.assertIn("Stop-Process", monitor_source)
 
+    def test_candidate_launcher_keeps_the_loop_on_console_python(self) -> None:
+        source = (ROOT / "scripts" / "launch_candidate_loop.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("$python = $pythonConsole", source)
+        self.assertNotIn("$pythonWindow", source)
+
     def test_stage_commands_are_started_without_a_console_window(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "stage.log"
