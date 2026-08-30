@@ -206,6 +206,29 @@ class PublicPackageTests(unittest.TestCase):
         self.assertTrue(result["perfect"])
         self.assertEqual(result["candidate"], 1)
 
+    def test_loop_notifies_when_a_stage_exhausts_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            notifications: list[tuple[str, str]] = []
+            config = {
+                "max_candidates": 1, "release_template": "candidate-{candidate}", "workdir": str(root),
+                "stages": [{"name": "convert", "command": ["convert"], "retry_attempts": 0}],
+                "score_reports": [{"path": "score-{candidate}.json"}],
+            }
+
+            result = candidate_loop.run_loop(
+                config,
+                run_dir=root / "run",
+                command_runner=lambda *_: 1,
+                notifier=lambda title, message: notifications.append((title, message)),
+            )
+
+        self.assertEqual(result["reason"], "stage_failed")
+        self.assertEqual(
+            notifications,
+            [("Training automation stopped", "Candidate 1 failed stage convert after 1 attempt(s).")],
+        )
+
     def test_cleanup_removes_only_old_rejected_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

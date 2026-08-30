@@ -409,6 +409,10 @@ def run_loop(
                     continue
                 result = {"perfect": False, "reason": "stage_failed", "candidate": candidate, "stage": name, "returncode": returncode, "log_path": str(log_path), "attempt": attempt}
                 _write_json(state_path, {"phase": "failed", **result})
+                notifier(
+                    "Training automation stopped",
+                    f"Candidate {candidate} failed stage {name} after {attempt} attempt(s).",
+                )
                 return result
             required_paths = raw_stage.get("required_paths", [])
             if not isinstance(required_paths, list) or not all(isinstance(item, str) for item in required_paths):
