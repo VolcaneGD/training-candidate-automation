@@ -407,6 +407,32 @@ def monitor_heartbeat_path(instance_key: str) -> Path:
     return Path(tempfile.gettempdir()) / f"training-candidate-monitor-heartbeat-{digest}.json"
 
 
+def read_runtime_settings(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def monitor_language(payload: dict[str, object]) -> str:
+    language = payload.get("language")
+    return language if language in {"en", "ja"} else "en"
+
+
+def write_settings_payload(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(path)
+
+
+def persist_monitor_language(path: Path, language: str) -> None:
+    payload = read_runtime_settings(path)
+    payload["language"] = monitor_language({"language": language})
+    write_settings_payload(path, payload)
+
+
 def apply_runtime_settings(args: argparse.Namespace, payload: dict[str, object]) -> argparse.Namespace:
     """Copy the allowed runtime fields from a launcher update into monitor args."""
     updated = argparse.Namespace(**vars(args))
@@ -435,14 +461,13 @@ def apply_runtime_settings(args: argparse.Namespace, payload: dict[str, object])
 
 
 def write_runtime_settings(path: Path, args: argparse.Namespace) -> None:
-    payload: dict[str, object] = {}
+    payload: dict[str, object] = {
+        "language": monitor_language(read_runtime_settings(path)),
+    }
     for name in RUNTIME_SETTING_NAMES:
         value = getattr(args, name)
         payload[name] = str(value) if isinstance(value, Path) else value
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    temporary.replace(path)
+    write_settings_payload(path, payload)
 
 
 class SingleInstanceMutex:
@@ -667,7 +692,7 @@ class TrainingMonitorApp:
         from tkinter import scrolledtext, ttk
 
         self.args = args
-        self.language = "en"
+        self.language = monitor_language(read_runtime_settings(settings_path))
         self.settings_path = settings_path
         self.heartbeat_path = monitor_heartbeat_path(args.instance_key)
         self.settings_mtime_ns = -1
@@ -759,6 +784,7 @@ class TrainingMonitorApp:
 
     def _toggle_language(self) -> None:
         self.language = "ja" if self.language == "en" else "en"
+        persist_monitor_language(self.settings_path, self.language)
         self.log_label.configure(text=dashboard_text(self.language, "live_log"))
         self.language_button.configure(text=dashboard_text(self.language, "language"))
         self.copy_button.configure(text=copy_report_button_text(self.language))

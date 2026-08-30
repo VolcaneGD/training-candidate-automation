@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -18,6 +19,30 @@ import training_monitor
 
 
 class PublicPackageTests(unittest.TestCase):
+    def test_runtime_settings_preserve_the_selected_dashboard_language(self) -> None:
+        """A stage-transition launcher update must not reset the dashboard locale."""
+        args = argparse.Namespace(
+            title="Current run",
+            watch_path=Path("C:/current"),
+            log_path=Path("C:/current/automation.log"),
+            process_id=20,
+            modal_app=None,
+            state_path=None,
+            refresh_seconds=1,
+            notify=True,
+            recovery_task=None,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            settings_path = Path(temporary) / "monitor-settings.json"
+            settings_path.write_text('{"language":"ja"}', encoding="utf-8")
+
+            training_monitor.write_runtime_settings(settings_path, args)
+
+            payload = json.loads(settings_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["language"], "ja")
+        self.assertEqual(training_monitor.monitor_language(payload), "ja")
+
     def test_notification_uses_console_python_and_plays_an_immediate_chime(self) -> None:
         helper = Path("C:/notification/notify_done.py")
         with (
